@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.7
+#
+# Temporary test image used by the `doexecute-test-dood` Cursor skill.
+# Provides a self-contained environment to run the CRBPM Gradle + npm test
+# suite from inside a container that talks to the host Docker daemon (DooD),
+# so Testcontainers / Quarkus Dev Services can spin up sibling services.
+#
+# Aligned with `AGENTS.md`:
+#   - Java 21 toolchain (Temurin) matching `gradle/libs.versions.toml`.
+#   - Node 20 + npm for the `ui` module (Vitest).
+#   - Docker CLI (no daemon) for DooD via mounted socket.
+
+FROM eclipse-temurin:21-jdk-jammy
+
+ARG NODE_MAJOR=20
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        git \
+        tini \
+        unzip \
+        bash; \
+    install -m 0755 -d /etc/apt/keyrings; \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list; \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable" \
+        > /etc/apt/sources.list.d/docker.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        nodejs \
+        docker-ce-cli \
+        docker-buildx-plugin \
+        docker-compose-plugin; \
+    rm -rf /var/lib/apt/lists/*; \
+    java -version; \
+    node --version; \
+    npm --version; \
+    docker --version
+
+ENV JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8 -Duser.language=en -Duser.country=US" \
+    GRADLE_USER_HOME=/cache/gradle \
+    NPM_CONFIG_CACHE=/cache/npm \
+    NPM_CONFIG_PROGRESS=false \
+    CI=true \
+    TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=true
+
+RUN mkdir -p /cache/gradle /cache/npm /work && chmod -R a+rwX /cache
+
+WORKDIR /work
+
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["bash"]

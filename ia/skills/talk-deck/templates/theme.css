@@ -1,0 +1,75 @@
+/* @theme talk */
+
+/*
+ * Modifiable Marp theme.
+ * Change the variables in :root, then rebuild with build.ps1 or build.sh.
+ * The deck selects this theme with `theme: talk`.
+ */
+
+@import 'default';
+
+:root {
+  --talk-bg: #f7f6f3;
+  --talk-fg: #1c1917;
+  --talk-accent: #0f4c5c;
+  --talk-muted: #57534e;
+  --talk-font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --talk-heading: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --talk-code: "Cascadia Code", "SFMono-Regular", Consolas, ui-monospace, monospace;
+}
+
+section {
+  background: var(--talk-bg);
+  color: var(--talk-fg);
+  font-family: var(--talk-font);
+  font-size: 30px;
+  line-height: 1.35;
+  padding: 56px 72px;
+  justify-content: flex-start;
+}
+
+section.lead {
+  justify-content: center;
+  text-align: left;
+}
+
+h1 {
+  color: var(--talk-accent);
+  font-family: var(--talk-heading);
+  font-size: 1.35em;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.4em;
+}
+
+section.lead h1 {
+  font-size: 1.7em;
+}
+
+ul {
+  margin-top: 0.4em;
+}
+
+li {
+  margin: 0.25em 0;
+}
+
+img {
+  display: block;
+  margin: 0.6em auto 0;
+  max-height: 58%;
+  max-width: 88%;
+  object-fit: contain;
+}
+
+code,
+pre {
+  font-family: var(--talk-code);
+  font-size: 0.72em;
+}
+
+footer,
+section::after {
+  color: var(--talk-muted);
+  font-size: 0.55em;
+}

@@ -1,0 +1,20 @@
+site_name: AI Dev Environment
+site_description: Skills, Talks and Tools for building and improving my AI powered dev environment
+site_url: https://bouquetf.github.io/ai-dev-environment/
+
+repo_url: https://github.com/bouquetf/ai-dev-environment
+repo_name: bouquetf/ai-dev-environment
+
+theme:
+  name: material
+  language: fr
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Skills: ia/skills/index.md
+  - Talks: talks/index.md
+  - Tools: tools/index.md

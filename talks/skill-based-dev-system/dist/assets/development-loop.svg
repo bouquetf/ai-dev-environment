@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 868 196" role="img" aria-labelledby="development-loop-title">
+  <title id="development-loop-title">Six steps on one row. Feedback is centered on the Tasks to Review arrow. Return arrows travel below the steps.</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333"/>
+    </marker>
+  </defs>
+  <style>
+    .box { fill: #ECECFF; stroke: #9370DB; stroke-width: 1; }
+    .label { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; fill: #333333; text-anchor: middle; }
+    .link { fill: none; stroke: #333333; stroke-width: 2; marker-end: url(#arrow); }
+  </style>
+  <rect class="box" x="8" y="10" width="112" height="44"/>
+  <rect class="box" x="156" y="10" width="112" height="44"/>
+  <rect class="box" x="304" y="10" width="112" height="44"/>
+  <rect class="box" x="452" y="10" width="112" height="44"/>
+  <rect class="box" x="600" y="10" width="112" height="44"/>
+  <rect class="box" x="748" y="10" width="112" height="44"/>
+  <rect class="box" x="378" y="108" width="112" height="44"/>
+  <text class="label" x="64" y="37">Specify</text>
+  <text class="label" x="212" y="37">Stories</text>
+  <text class="label" x="360" y="37">Tasks</text>
+  <text class="label" x="508" y="37">Review</text>
+  <text class="label" x="656" y="37">Validate</text>
+  <text class="label" x="804" y="37">Commit</text>
+  <text class="label" x="434" y="135">Feedback</text>
+  <path class="link" d="M 120 32 H 148"/>
+  <path class="link" d="M 268 32 H 296"/>
+  <path class="link" d="M 416 32 H 444"/>
+  <path class="link" d="M 564 32 H 592"/>
+  <path class="link" d="M 712 32 H 740"/>
+  <path class="link" d="M 804 54 V 130 H 490"/>
+  <path class="link" d="M 378 130 H 64 V 54"/>
+</svg>
