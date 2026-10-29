@@ -1,298 +1,175 @@
 ---
 name: specification-en
-description: Iterative project specification creation (English); keeps asking while ambiguities remain
+description: Pragmatic project specification creation (English); top-down approach with brief, assumptions, and blocking questions only
 ---
 
 # Skill: Specification (EN)
 
-This guide describes how to generate a project specification iteratively with questions and answers until complete resolution.
+This guide describes how to generate a project specification that's sufficient to derive actionable user stories, favoring fast scoping over exhaustive clarification.
 
 ## What I Do
 
-I guide the creation of a complete project specification through an iterative process of questions, answers, and clarification until all inconsistencies are resolved.
+I guide creation of a structured specification starting from a user brief and codebase inspection, asking only **blocking** questions and formulating assumptions for everything else.
 
 ## When to Use Me
 
-Use this skill when you want to create a structured project specification from a rough idea, iterating until everything is clear and consistent.
+Use this skill to scope a project or feature before breaking it down into user stories with `story-en`.
 
-## Process Steps
+## File layout (`docs/specification/`)
 
-### Step 1: Initiation
-- Create a documentation working directory (ex: `docs/specification/`) if it doesn't exist
-- Generate the `questions.md` file if it doesn't exist
-- If a specification file already exists, use its content as the specification base
-- Otherwise, generate this empty specification.md file and ask the user to describe what the project will do in questions.md
-- Ask open-ended questions in questions.md to better understand the project
+```text
+docs/specification/
+  specification.md   # Target specification
+  questions.md        # BLOCKING questions only (temporary — deleted when done)
+  assumptions.md      # Proposed/inferred assumptions (temporary — deleted when done)
+```
 
-### Step 2: Specification Creation
-- Read user responses in `questions.md`
-- Update `specification.md` with:
-  - Structured project description
-  - Clear placeholders (ex: `[TO_CLARIFY: ...]`) to identify fuzzy points
-  - Inconsistency markers (ex: `[INCONSISTENCY: ...]`)
-- Generate a new `questions.md` file containing:
-  - Questions needed to resolve placeholders
-  - For **each** question: stake, factual context, dependencies, detailed proposals (see "question quality" rule)
-  - Detected inconsistencies to resolve (same level of detail)
+| File | Role |
+|------|------|
+| `specification.md` | Structured spec sufficient to generate testable user stories |
+| `questions.md` | Blocking questions requiring explicit arbitration (max 2 rounds) |
+| `assumptions.md` | Decisions inferred from codebase/brief with justification, to accept or reject |
 
-### Step 3: Update
-- Read responses in `questions.md`
-- Update `specification.md` by replacing placeholders with answers
-- Resolve identified inconsistencies
+## Process
 
-### Step 4: Iteration
-- Relaunch Step 2 with a new agent
-- Check if there are remaining placeholders, inconsistencies, **or any still-ambiguous / unclear point that deserves a further answer** (see rule below)
-- If yes, continue iteration: regenerate `questions.md` and wait for answers
-- If no, delete the questions.md file and consider the specification complete
+### Step 0 - Brief & Context (TOP-DOWN)
+- **Create** `docs/specification/` if it doesn't exist
+- **Extract brief**: if the user provides a brief (objectives, users, scope/out of scope, constraints, known stack), apply it directly without questions
+- **Inspect codebase**: read `README.md`, `AGENTS.md`, `package.json`, `pom.xml`, `build.gradle*`, `docs/` to identify stack, conventions, architecture, existing patterns
+- **Check existing spec**: if `docs/specification/specification.md` exists, use it as base
 
-## Rule: continuous clarification (mandatory)
+### Step 1 - Initial draft with assumptions
+- **Generate draft** `specification.md` with structure (Overview, Goals, Scope/Out of scope, Actors, Core Features, Constraints, Architecture/Tech, Residual open points)
+- **Infer intelligently**: leverage the codebase to propose stack/style/conventions consistent with existing patterns
+- **List assumptions** in `assumptions.md` as `[INFERRED]` or `[PROPOSED]` with justification and impact
+- **Don't ask** about things clearly inferable or already specified in the brief
 
-**Never close the loop while something still needs clarifying.** After every read of the answers and every update to `specification.md`, re-read the result and ask **new** questions if:
+### Step 2 - Identify only blockers
+- **Analyze** the draft to detect only **real blockers** for moving to `story-en`:
+  - Problem to solve / first useful delivery cannot be determined
+  - Primary actors cannot be identified
+  - Direct contradiction between already-written elements
+  - Product/technical decision makes defining a coherent MVP scope impossible
+- **If no blockers**: generate `assumptions.md` with remaining assumptions, suggest accepting or giving directives
+- **If blockers exist**: create `questions.md` with **maximum 3-5 global questions** (condensed format by default)
 
-- a point remains ambiguous, contradictory, or incomplete;
-- an answer raises further questions (unresolved implications, edge cases, roles, constraints, scope);
-- a product or technical choice deserves confirmation before it is locked in;
-- a placeholder was replaced by wording that is still vague ("to be defined later", "as needed", etc.).
+### Step 3 - Update based on answers
+- User can respond with:
+  - `"I've answered the questions, update the specification"`
+  - `"Accept all assumptions"`
+  - `"Apply my directives: ..."`
+  - Targeted feedback by section
+- Update `specification.md` and `assumptions.md` accordingly
+- **Re-read**: only regenerate `questions.md` if **new blockers** appear. Maximum **2 rounds** total
 
-**Prefer asking over assuming.** Do not invent business or technical decisions just to finish faster. The absence of `[TO_CLARIFY: …]` / `[INCONSISTENCY: …]` markers is not enough: if the text still leaves a reasonable doubt, write the question in `questions.md` (with context and proposals when helpful) and **continue the cycle**.
+### Step 4 - Pragmatic closure
+- When no blockers remain (or after 2 rounds with assumptions applied):
+  - Delete `questions.md` and `assumptions.md`
+  - Quick check that spec is **sufficient to derive testable user stories** (clear MVP scope, actors identified, core features defined)
+  - Announce the specification is **ready for `story-en`/`story-fr`**
 
-Close only when, after that re-read, **no** ambiguity, inconsistency, or useful question remains — then clearly announce that the specification is complete.
+## Rule: targeted clarification (mandatory)
 
-## Rule: question quality (mandatory)
+- **Only blocking**: ask only if it prevents defining the problem/MVP scope or resolving a direct contradiction
+- **Assume intelligently**: everything else becomes an assumption in `assumptions.md`, justified and applied
+- **Stop criterion**: *"Clear enough to let `story-en`/`story-fr` generate testable user stories without guessing the MVP scope"* — NOT "no ambiguity possible"
+- **Max 2 rounds**: beyond that, formulate reasoned assumptions and conclude
+- **Accept directives**: apply immediately without questioning
 
-Every entry in `questions.md` must let the user answer **with full awareness**, without re-reading the whole specification or guessing what is at stake. A short question ("Which auth?", "SSO or OAuth?") is **not enough**.
+## Rule: question quality (adaptable)
 
-For **each** question, include **all** of the following blocks:
-
-| Block | Expected content |
-|-------|------------------|
-| **Stake** | Why the answer matters (product, technical, scope, downstream stories) |
-| **Context** | What is already decided or known; relevant excerpts/facts; frozen constraints; what remains fuzzy |
-| **Dependencies** | What will be blocked or shaped by the answer (other sections, placeholders, related choices) |
-| **Question** | Precise, unambiguous wording; exactly **one** decision |
-| **Proposals** | At least 2 concrete options (plus "Other"); **each** option describes resulting behavior, implications, and when it fits |
-| **Answer** | Empty slot for the user (`- [ ]` or `Answer:` line) |
-
-**Forbidden:** questions without context; bare option lists (`a) SSO b) OAuth`) with no implications; undefined jargon; packing several independent decisions into one question.
-
-**Required:** ground context in the project (references to `specification.md` sections, feedbacks, already-written constraints). If an option is recommended, say so with justification — without forcing the choice.
-
-## File Formats
-
-### questions.md
+### Condensed format (preferred)
 ```markdown
-# Specification Questions
-
-## Global context
-[Project summary + specification progress + files involved]
-
-## Questions
-
-### 1. [Placeholder / section ref] — [Short decision title]
-**Stake:** [Why decide now; impact of a wrong or deferred choice]
-**Context:**
-- Already decided / known: […]
-- Relevant excerpt or fact: […]
-- Still unclear: […]
-**Dependencies:** [Sections / placeholders / choices that depend on this answer]
-**Question:** [One clear decision]
+### Q[X] - [Short context] - [Decision to make]
+**Stake:** Impact on MVP scoping / story breakdown
+**Question:** [Precise wording, ONE decision]
 **Proposals:**
-- a) **[Name]** — [Concrete behavior]. Implications: […]. Fits when: […].
-- b) **[Name]** — [Concrete behavior]. Implications: […]. Fits when: […].
-- c) Other: [specify — what to describe]
-**Answer:**
-
-### 2. …
-…
-
-## Inconsistencies to Resolve
-### I1. [Title]
-**Finding:** [Conflicting statements/constraints, with citations]
-**Why it matters:** […]
-**Question:** [How to resolve]
-**Proposals:** (same detail level as above)
+- a) [Option 1] — Behavior + implications
+- b) [Option 2] — Behavior + implications
+- c) Other: [specify]
 **Answer:**
 ```
 
-### specification.md
+### Full format (only for true blockers)
+Include: **Stake**, **Context**, **Dependencies**, **Question**, **Proposals** (≥2 + Other with implications), **Answer**. Cite sections of `specification.md` if relevant.
+
+**Forbidden**: questions without context, bare options, multiple decisions in one question
+
+## File Formats
+
+### specification.md (target structure)
 ```markdown
 # Specification - [Project Name]
 
 ## Overview
-[General description]
+[Problem to solve, value delivered]
 
-## Features
-[List of features]
+## Goals
+- [Primary goal]
+- [Secondary goals if useful]
 
-## [Section with placeholder]
-[TO_CLARIFY: Necessary details about...]
+## Scope / Out of scope
+### In scope (MVP)
+- [...]
+### Out of scope
+- [...]
 
-## [Section with inconsistencies]
-[INCONSISTENCY: Identified conflict between...]
+## Actors / Users
+- [Primary role + usage context]
+
+## Core Features
+- [Key features for MVP]
+
+## Constraints
+- [Technical, non-functional, legal if known]
+
+## Architecture / Stack (proposed)
+[Stack consistent with existing codebase + rationale]
+
+## Residual assumptions
+[References to assumptions.md if still pending]
 ```
 
-## Usage Example
-
-**Launching the skill:**
-```
-/ specification-en
-```
-
-**Step 1 - Agent creates `docs/specification/questions.md`:**
+### assumptions.md
 ```markdown
-# Specification Questions
+# Assumptions - Specification
+
+## Inferred from codebase
+- [INFERRED] Stack: [...] — Justif: [detected files] — Status: [APPLIED]
+
+## Proposed from brief
+- [PROPOSED] MVP scope: [...] — Justif: [...] — Status: [TO VALIDATE/ACCEPTED/REFUSED]
+
+## Applied globally
+- [APPLIED] [...] — Impacts on scoping
+```
+
+### questions.md (blocking only)
+```markdown
+# BLOCKING Questions - Specification
 
 ## Global context
-No existing specification. Goal: frame the project before drafting `specification.md`.
+- Brief: [summary]
+- Codebase inspected: [key findings]
+- Round: [1/2]
 
-## Questions
-
-### 1. Scope — Objective and main capability
-**Stake:** Without a clear objective, the spec risks mixing several products. This answer structures everything else.
-**Context:**
-- Already decided / known: nothing — cold start.
-- Still unclear: product nature, problem solved, users.
-**Dependencies:** Audience, technical constraints, later story split.
-**Question:** What problem does the project solve, and what is the main capability of the first useful delivery?
-**Proposals:**
-- a) **Collaborative business tool** — e.g. shared tasks/workflows. Implications: multi-user, permissions, possible real-time.
-- b) **Individual-first tool** — Deliver solo value, collaboration later. Implications: auth/sharing deferred.
-- c) Other: describe the problem, primary user, and first critical screen/flow.
-**Answer:**
-
-### 2. Users — Target audience
-**Stake:** Drives personas, UI vocabulary, and accessibility / mobile requirements.
-**Context:** Depends on question 1.
-**Dependencies:** Roles, permissions, priority journeys.
-**Question:** Who are the primary users of the first delivery, and in what usage context (desktop, field, mobile)?
-**Proposals:**
-- a) **Professional teams** (e.g. agile, ops) — domain jargon OK; prioritize productivity and integrations.
-- b) **General public / non-experts** — simple UI, onboarding, mobile-first.
-- c) Other: roles, usage frequency, dominant devices.
-**Answer:**
-
-### 3. Constraints — Technical and non-functional
-**Stake:** Avoid promising real-time, SSO, or offline without a realistic base.
-**Context:** No known constraints yet.
-**Dependencies:** Stack, hosting, auth choice, real-time strategy.
-**Question:** Which constraints are non-negotiable (platforms, stack, compliance, perf, existing integrations)?
-**Proposals:**
-- a) **Few constraints** — free stack; prioritize time-to-market. Implications: agent will propose cautious defaults to validate.
-- b) **Strong constraints** — list stack, cloud, SSO, GDPR, SLA. Implications: locked into the spec from day one.
-- c) Other: list must-have vs nice-to-have.
+## Blocking questions
+### 1. [GLOBAL/MVP] — [Title]
+**Stake:** [Why blocks story breakdown]
+**Question:** [ONE decision]
+**Proposals:** [...]
 **Answer:**
 ```
-
-**User responds in `questions.md`:**
-```markdown
-### 1. … **Answer:** a) Web app for collaborative tasks with Kanban boards; first delivery = one shared board with columns and cards.
-### 2. … **Answer:** a) Agile development teams, desktop + tablet usage.
-### 3. … **Answer:** a) Mobile-compatible (responsive) required; no imposed tech stack.
-```
-
-**Step 2 - Agent generates `specification.md`:**
-```markdown
-# Specification - Collaborative Kanban Application
-
-## Overview
-Web application allowing agile development teams to manage their tasks via collaborative Kanban boards.
-
-## Features
-- Creation of customizable boards and columns
-- Task management with drag-and-drop
-- [TO_CLARIFY: Authentication system (SSO, email, OAuth?)]
-- [TO_CLARIFY: Role and permission management]
-
-## Technical Constraints
-- Mobile compatible (responsive design)
-- [INCONSISTENCY: No tech stack imposed but need real-time for collaboration]
-```
-
-**And generates a new `questions.md`:**
-```markdown
-# Specification Questions
-
-## Global context
-Collaborative Kanban for agile teams, mobile responsive. Open placeholders: auth, roles. Inconsistency: real-time desired with no imposed stack.
-
-## Questions
-
-### 1. [TO_CLARIFY: Authentication] — MVP auth mode
-**Stake:** Drives user model, onboarding, and possible IdP / BaaS dependency.
-**Context:**
-- Already decided: multi-user web app (agile teams), no imposed stack.
-- Unclear: enterprise SSO vs social login vs email/password for MVP.
-**Dependencies:** Roles/permissions section; hosting; compliance.
-**Question:** Which authentication mechanism for the first delivery?
-**Proposals:**
-- a) **Email + password** — Local accounts. Implications: password reset, basic security; no SSO at MVP.
-- b) **Social OAuth** (Google and/or GitHub) — Less friction for developers. Implications: provider deps; email still needed for notifications.
-- c) **Enterprise SSO (OIDC/SAML)** — Required if corporate clients from day one. Implications: IdP config, longer delivery.
-- d) Other: providers and whether multi-tenant.
-**Answer:**
-
-### 2. [TO_CLARIFY: Roles] — Board permission matrix
-**Stake:** Without clear roles, collaboration story acceptance criteria stay fuzzy.
-**Context:** Multi-user collaboration on one board; responsive mobile.
-**Dependencies:** Invitations, board sharing, possible audit.
-**Question:** Which roles exist on a board, and what can each do (create/edit/delete cards, manage members, workspace admin)?
-**Proposals:**
-- a) **Admin / Member / Guest** — Admin: everything + members; Member: card CRUD; Guest: read-only.
-- b) **Admin / Member only** — No read-only guest at MVP.
-- c) Other: provide a small role × action matrix.
-**Answer:**
-
-### 3. [INCONSISTENCY: Real-time vs free stack] — Collaborative sync strategy
-**Finding:** "Real-time" collaboration is implied, but no stack is imposed — risk of underestimating infra.
-**Why it matters:** Custom WebSocket ≠ BaaS ≠ polling; the choice changes cost and technical stories.
-**Question:** What level of "real-time" and which approach for the MVP?
-**Proposals:**
-- a) **Near real-time via BaaS** (e.g. Supabase/Firebase) — Implications: partial vendor lock-in, faster delivery.
-- b) **Custom WebSocket / SSE** — Implications: more control, more infra and test work.
-- c) **Short polling / refresh at MVP** — Implications: less fluid UX, defer true real-time.
-- d) Other: acceptable latency and edit conflicts (last-write-wins vs OT/CRDT).
-**Answer:**
-```
-
-**Transition Step 1 → Step 2:**
-The user must inform the agent that the questions are answered by simply typing:
-```
-I've answered the questions, continue
-```
-The agent does not automatically detect file modifications. The user must explicitly give the instruction to continue.
-
-**Step 3 - User responds in `questions.md`, then types:**
-```
-Questions answered, update the specification
-```
-Agent updates `specification.md` by replacing placeholders with answers.
-
-**Transition Step 3 → Step 4:**
-Agent automatically checks if there are any placeholders left. If there are, it relaunches Step 2 with a new cycle of questions.
-
-**Step 4 - Iteration:**
-Agent relaunches Step 2, verifies there are no more placeholders, the specification is complete!
 
 ## How to Move from One Step to Another
 
 | Transition | User Action | Agent Action |
 |------------|-------------|--------------|
-| Step 1 → 2 | Type `continue` or `I've answered` | Reads `questions.md` and generates `specification.md` + new `questions.md` |
-| Step 2 → 3 | Type `continue` or `questions answered` | Reads answers and updates `specification.md` |
-| Step 3 → 4 | Automatic | Checks remaining placeholders **and** leftover ambiguities; relaunches Step 2 (new `questions.md`) if anything still needs clarifying |
-| End | Automatic | Announces that the specification is complete **only** after a re-read with no useful question left |
+| Start | Provide spec path/brief + context | Inspect codebase, extract brief, generate draft + assumptions |
+| Draft → Clarification | "Accept all assumptions" OR answer blocking questions OR "Apply my directives: ..." | Apply decisions, refine spec |
+| After update | Same form | Only re-ask if new blockers (max 2 rounds) |
+| End | Automatic if sufficient | Delete questions.md/assumptions.md, confirm ready for `story-en` |
 
-**Important:** The agent does not monitor file changes in real-time. The user must always give an explicit instruction for the agent to move to the next step, except for the automatic transition Step 3 → 4.
+**Important:** The agent does not monitor file changes in real-time. Always give an explicit instruction to move to the next step.
 
-## Completion Criteria
-
-The specification is finished when **all** of the following are true:
-
-1. `specification.md` no longer contains any `[TO_CLARIFY: ...]` or `[INCONSISTENCY: ...]` placeholders.
-2. After the post-update re-read, no ambiguous, unclear, or further-answer-worthy point remains.
-3. `questions.md` has been regenerated with no useful questions left (or no longer needs to exist) — then is deleted.
-
-## Next workflow step
-
-Once the specification is complete, use the **`story-en`** skill to break it into user stories. Each story is written to `tmp/<id>/story.md`; implementation tasks go under `tmp/<id>/story/` (**`tasks-en`** skill). A completed task is renamed to `task-YYY-done.md`.
+**Tip:** The more precise your brief (problem, users, scope), the fewer questions will be asked.

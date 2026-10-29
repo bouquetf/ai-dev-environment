@@ -183,8 +183,18 @@ Feedback from [DATE]: "[feedback text]"
 - When nothing remains to clarify (for all paths)
 - Delete the `questions.md` file if it exists
 - Move new stories to `docs/stories/done/` (or leave them in `docs/stories/` per convention)
+- **Update the implementation plan** `docs/stories/plan-implementation.md` (see rule below)
 - Update `AGENTS.md` and `workflow.md` if necessary
 - Announce the end of the workflow
+
+## Rule: implementation plan (mandatory)
+
+**Whenever stories are integrated** (created or finalized, paths A and B), rewrite or update `docs/stories/plan-implementation.md` (same format as story-en):
+
+- Recalculate recommended order, parallel groups, justifications, and the Mermaid diagram from **all** still-open stories.
+- **Hide completed stories**: directories `docs/stories/<id>-done/` (`-done` suffix). They must **not** appear in the order, parallel groups, or graph. A short mention is allowed only under `## Notes` (e.g. "#001–#005 already delivered").
+- Dependencies on a `-done` story are treated as already satisfied: do not block an open story on a completed one in the diagram.
+- If the file does not exist yet, create it. Do not regenerate the plan while blocking questions remain open.
 
 ## Feedback file format
 
@@ -240,7 +250,7 @@ Feedbacks without a marker are to be processed.
 | Step 5a → 6a | Automatic | Analyzes stories and adds questions |
 | Step 6a → 7a | Type "I've answered the questions, update the stories" | Updates stories according to answers |
 | Step 7a → 6a | Automatic after update | Re-checks consistency |
-| Step 7a → 8 | Automatic (no more questions) | Deletes questions.md, marks processed feedbacks, announces completion |
+| Step 7a → 8 | Automatic (no more questions) | Deletes questions.md, marks processed feedbacks, updates the plan (hide `-done` stories), announces completion |
 
 ### Path B — Complex topic
 
@@ -252,7 +262,7 @@ Feedbacks without a marker are to be processed.
 | Step 4b → 5b | Automatic | Waits for user answers |
 | Step 5b → 5b | Type "I've answered the questions, continue" | Updates spec, checks remaining placeholders |
 | Step 5b → 6b | Automatic (no more placeholders) | Deletes questions.md, runs story-en on the sub-specification |
-| Step 6b → 8 | Automatic (stories finalized) | Announces created stories |
+| Step 6b → 8 | Automatic (stories finalized) | Announces created stories, updates the plan (hide `-done` stories) |
 
 **Important:** The agent does not monitor file changes in real time. The user must always give an explicit instruction for the agent to move to the next step.
 

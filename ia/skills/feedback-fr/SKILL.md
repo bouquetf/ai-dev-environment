@@ -186,8 +186,18 @@ Feedback du [DATE] : "[texte du feedback]"
 - Quand, pour tous les chemins, il n'y a vraiment plus rien à clarifier après relecture
 - Supprimer le fichier `questions.md` s'il existe
 - Déplacer les nouvelles stories dans `docs/stories/done/` (ou les laisser dans `docs/stories/` selon la convention)
+- **Mettre à jour le plan d'implémentation** `docs/stories/plan-implementation.md` (voir règle ci-dessous)
 - Mettre à jour `AGENTS.md` et `workflow.md` si nécessaire
 - Annoncer la fin du workflow
+
+## Règle : plan d'implémentation (obligatoire)
+
+**À chaque fois que des stories sont intégrées** (création ou finalisation, chemins A et B), réécrire ou mettre à jour `docs/stories/plan-implementation.md` (même format que story-fr) :
+
+- Recalculer l'ordre recommandé, les groupes en parallèle, les justifications et le diagramme Mermaid à partir de **toutes** les stories encore ouvertes.
+- **Cacher les stories déjà terminées** : dossiers `docs/stories/<id>-done/` (suffixe `-done`). Elles n'apparaissent **ni** dans l'ordre, **ni** dans les groupes parallèles, **ni** dans le graphe. Mention courte possible uniquement dans `## Notes` (ex. « #001–#005 déjà livrées »).
+- Les dépendances vers une story `-done` sont considérées comme satisfaites : ne pas bloquer une story ouverte sur une story terminée dans le diagramme.
+- Si le fichier n'existe pas encore, le créer. Ne pas régénérer le plan tant que des questions bloquantes restent ouvertes.
 
 ## Règle : clarification continue (obligatoire)
 
@@ -311,7 +321,7 @@ Les feedbacks sans marqueur sont à traiter.
 | Étape 5a → 6a | Automatique | Analyse les stories et ajoute les questions |
 | Étape 6a → 7a | Taper "J'ai répondu aux questions, mets à jour les stories" | Met à jour les stories selon les réponses |
 | Étape 7a → 6a | Automatique après mise à jour | Re-vérifie la cohérence ; **régénère `questions.md` s'il reste des ambiguïtés** |
-| Étape 7a → 8 | Automatique (plus de questions **après relecture**) | Supprime questions.md, marque les feedbacks traités, annonce la fin |
+| Étape 7a → 8 | Automatique (plus de questions **après relecture**) | Supprime questions.md, marque les feedbacks traités, met à jour le plan (sans stories `-done`), annonce la fin |
 
 ### Chemin B — Sujet complexe
 
@@ -323,7 +333,7 @@ Les feedbacks sans marqueur sont à traiter.
 | Étape 4b → 5b | Automatique | Attend les réponses de l'utilisateur |
 | Étape 5b → 5b | Taper "J'ai répondu aux questions, continue" | Met à jour la spec ; **relit** ; régénère `questions.md` s'il reste placeholders **ou** ambiguïtés |
 | Étape 5b → 6b | Automatique (plus de placeholders **ni d'ambiguïté utile après relecture**) | Supprime questions.md, exécute story-fr sur la sous-spécification |
-| Étape 6b → 8 | Automatique (stories finalisées **après clarification continue**) | Annonce les stories créées |
+| Étape 6b → 8 | Automatique (stories finalisées **après clarification continue**) | Annonce les stories créées, met à jour le plan (sans stories `-done`) |
 
 **Important :** L'agent ne surveille pas les modifications de fichiers en temps réel. L'utilisateur doit toujours donner une instruction explicite pour que l'agent passe à l'étape suivante.
 

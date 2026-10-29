@@ -1,366 +1,218 @@
 ---
 name: tasks-fr
-description: Découpage de User Stories en tâches de code exploitables (Prompts) ; continue de poser des questions tant qu'il reste des ambiguïtés
+description: Découpage pragmatique de User Stories en tâches "prompt" exécutables ; alignement sur l'existant, hypothèses et questions uniquement bloquantes
 ---
 
-# Skill: Tasks
+# Skill: Tasks (FR)
 
-Ce guide décrit comment découper une story en tâches "prompt" exécutables par un agent de code avec tests, documentation et exemples d'API.
+Ce guide décrit comment découper une story en tâches "prompt" détaillées, prêtes à être exécutées par un agent de code, avec tests, documentation et exemples d'API. L'objectif est d'obtenir des prompts exécutables sans cycles de questionnement interminables.
 
 ## Qu'est-ce que je fais
 
-Je prends une story existante, je la découpe en tâches élémentaires. Chaque tâche contient un prompt le plus détaillé possible, prêt à être exécuté par un agent de code. Je vérifie la cohérence des tâches générées et je clarifie avec l'utilisateur via un fichier `questions.md` jusqu'à résolution complète.
+Je prends une story existante, j'inspecte le codebase pour m'aligner sur les conventions en vigueur, je propose un découpage avec hypothèses intégrées et ne pose que des questions **réellement bloquantes** pour produire des tâches avec critère "tests verts" satisfaisable.
 
 ## Quand m'utiliser
 
-Utilisez cette skill après avoir créé vos user stories avec la skill `story-fr`, quand vous voulez passer à l'implémentation.
+Utilisez cette skill après avoir créé vos user stories avec `story-fr`, quand vous voulez générer des prompts prêts à exécuter.
 
-## Organisation des fichiers (`tmp/`)
-
-Chaque story a son identifiant **`<id>`** sur 3 chiffres (`001`, `004`, …). Normaliser l'argument utilisateur (`1` → `001`, `story-004` → `004`).
+## Organisation des fichiers (`docs/stories/`)
 
 ```text
-tmp/
+docs/stories/
   <id>/
     story.md                    # user story (source)
     story/
       task-001.md               # tâche en attente
       task-001-done.md          # tâche terminée (renommée)
       task-002.md
-      task-001-examples.http    # exemples HTTP (si applicable)
-      task-001-examples-done.http  # renommé avec la tâche
-      questions.md              # clarifications temporaires (supprimé à la fin)
+      task-001-examples.http
+      task-001-examples-done.http
+      questions.md              # questions BLOQUANTES uniquement (supprimé à la fin)
+      assumptions.md            # hypothèses/conventions (supprimé à la fin)
 ```
 
 | Fichier | Rôle |
 |---------|------|
-| `tmp/<id>/story.md` | Story lue en entrée |
-| `tmp/<id>/story/task-YYY.md` | Prompt détaillé — **en attente** |
-| `tmp/<id>/story/task-YYY-done.md` | Même prompt — **terminée** (suffixe `-done` avant l'extension) |
-| `tmp/<id>/story/questions.md` | Questions de clarification sur les tâches |
+| `docs/stories/<id>/story.md` | Story lue en entrée |
+| `docs/stories/<id>/story/task-YYY.md` | Prompt détaillé — **en attente** |
+| `docs/stories/<id>/story/task-YYY-done.md` | Prompt détaillé — **terminée** (suffixe `-done` avant l'extension) |
+| `docs/stories/<id>/story/questions.md` | Questions **bloquantes** uniquement |
+| `docs/stories/<id>/story/assumptions.md` | Conventions inférées/appliquées (naming, erreurs, tests, structure) |
 
-**Convention `-done` :** dès qu'une tâche est exécutée et validée (critère « tests verts » satisfait), **renommer** le fichier prompt et tout fichier associé (`task-YYY-examples.http` → `task-YYY-examples-done.http`). Ne pas supprimer le contenu : le renommage trace l'avancement. Les tâches en attente sont celles dont le nom correspond à `task-*.md` **sans** `-done`.
+**Convention `-done` :** renommer le fichier prompt et les fichiers associés (`task-YYY-examples.http` → `task-YYY-examples-done.http`) **uniquement après** validation des tests verts. Ne pas supprimer le contenu.
 
 ## Workflow
 
-### Étape 1 - Lecture de la story
-- Prendre le numéro de story fourni en argument (ex: `/ tasks-fr 001`)
-- Normaliser l'identifiant : `001`
-- Lire le fichier `tmp/001/story.md`
-- Extraire la description, les critères d'acceptation, les tests et la documentation attendue
-- Lire la spécification et les autres stories (`tmp/*/story.md`) pour comprendre le contexte global
+### Étape 0 - Inspection & alignement sur l'existant
+- Normaliser l'id story (`1` → `001`)
+- Lire `docs/stories/<id>/story.md`, `docs/stories/plan-implementation.md` (si présent), la spécification
+- **Inspecter le codebase** autour des zones impactées : patterns de nommage, gestion d'erreurs, structure DTO/Service/Controller, organisation des tests, conventions Gradle
+- **Si deux patterns concurrents** existent, ils seront abordés uniquement s'ils créent une incohérence bloquante. Sinon, **aligner sur le pattern majoritairement utilisé**
 
-### Étape 2 - Découpage et génération des tâches avec prompts détaillés
-- Analyser la story pour identifier les unités de travail atomiques
-- **Chaque tâche doit pouvoir être livrée avec la suite de tests entièrement verte** : pas d'état intermédiaire où des tests existants échouent, sont ignorés (`@Disabled`), supprimés ou commentés pour masquer une régression. Si un refactor est trop large pour tenir en une tâche, le redécouper ou exiger une migration atomique (code + tests + imports dans le même livrable).
-- Pour chaque unité, générer un prompt extrêmement détaillé incluant :
-  - **Objectif précis** de la tâche
-  - **Description fonctionnelle** : comportement attendu, cas nominaux et cas limites
-  - **Fichiers concernés** : chemins exacts, nature de la modification (création, modification, suppression)
-  - **Contraintes techniques** : framework, patterns, conventions du projet, gestion d'erreurs, performance, sécurité
-  - **Signature des fonctions/classes** : noms, paramètres, types, valeurs de retour
-  - **Structure des données** : schémas, modèles, DTO, interfaces
-  - **Tests à implémenter** : scénarios unitaires, intégration, E2E avec cas de test concrets
-  - **Critère de fin — tests verts** : commandes Gradle exactes à exécuter avant de clôturer la tâche ; modules et profils concernés ; interdiction de livrer avec des tests en échec
-  - **Documentation** : quoi documenter et où
-  - **Exemples d'utilisation** : extraits de code, requêtes API HTTP
-- Créer le répertoire `tmp/<id>/story/` s'il n'existe pas
-- Générer les fichiers `tmp/<id>/story/task-YYY.md`
+### Étape 1 - Génération directe des tâches
+- Découper la story en unités atomiques livrables **avec tests verts**
+- Pour chaque tâche, générer un prompt détaillé avec : objectif, contexte, fichiers, signatures, contraintes, tests à implémenter, **critère de fin "tests verts"** avec commandes exactes, documentation, exemples `.http` si API
+- **Appliquer les conventions inférées** directement (noms de classes/fichiers, format d'erreurs, placement des tests)
+- Créer `docs/stories/<id>/story/` et générer `task-YYY.md`
 
-### Étape 3 - Vérification de cohérence
-- Analyser les tâches générées entre elles :
-  - Vérifier qu'il n'y a pas de dépendances circulaires ou d'ordre d'exécution problématique
-  - Vérifier que chaque tâche a des entrées et sorties claires
-  - Vérifier que la somme des tâches couvre bien 100% des critères d'acceptation de la story
-  - **Vérifier que chaque tâche inclut un critère de fin « tests verts »** avec les commandes de validation adaptées au périmètre modifié (modules Gradle touchés, profils `-Pcrbpm.engines=…` si applicable)
-  - **Vérifier qu'aucune tâche ne laisse la suite en rouge** : déplacements de tests colocalisés avec le code déplacé ; refactors transversaux (renommage d'enum, changement de package) couvrent tous les appels et tests dans la même tâche
-  - Identifier les doublons ou chevauchements entre tâches
-  - Vérifier la cohérence des nommages, types, signatures entre tâches
-- Analyser la cohérence avec le projet existant :
-  - Vérifier la compatibilité avec les conventions et l'architecture existante
-  - Vérifier que les fichiers référencés existent ou sont bien à créer
+### Étape 2 - Vérification de cohérence ciblée
+- Vérifier dépendances, ordonnancement, couverture des critères d'acceptation
+- Vérifier cohérence des signatures entre tâches
+- Vérifier qu'aucune tâche ne laisse la suite en rouge
+- **Vérifier que chaque tâche contient un critère "tests verts" concret**
 
-### Étape 4 - Création de questions.md
-- Créer un fichier `tmp/<id>/story/questions.md`
-- Ajouter des questions de clarification pour :
-  - Les choix d'implémentation non tranchés
-  - Les incohérences entre tâches
-  - Les ambiguïtés de la story
-  - Les dépendances et l'ordre d'exécution
-  - Les propositions techniques alternatives
-- Respecter **intégralement** la règle « qualité des questions » : chaque question doit inclure enjeu, contexte factuel (extraits tâche/story/code existant), dépendances, propositions détaillées avec implications, et emplacement de réponse
-- Ancrer le contexte dans le projet (chemins de fichiers, modules Gradle, patterns déjà présents) pour que l'utilisateur tranche sans relire tous les prompts
+### Étape 3 - Hypothèses vs blocages
+- Lister les conventions appliquées dans `assumptions.md` avec `[INFÉRÉ - APPLIQUÉ]` ou `[PROPOSÉ - APPLIQUÉ]`
+- N'émettre des questions dans `questions.md` que si un élément est **réellement bloquant** pour écrire un prompt exécutable ou garantir des "tests verts" :
+  - Dépendance circulaire non résolvable
+  - Contrat entre tâches non déductible et incohérent avec le code existant
+  - Ambiguïté rendant impossible de déterminer les modules/commandes de test à exécuter
+- **Si aucun blocage** : aller directement à l'étape 4
 
-### Étape 5 - Mise à jour
-- L'utilisateur répond aux questions dans `questions.md`
-- L'utilisateur tape : `J'ai répondu, mets à jour les tâches`
-- Mettre à jour les tâches en fonction des réponses
-- **Relire les tâches mises à jour** : s'il reste des ambiguïtés, choix non tranchés, inconsistances entre tâches, ou points qui méritent une réponse supplémentaire → régénérer `questions.md`
-- Retourner à l'Étape 3 (ne pas clôturer tant qu'il reste quelque chose à clarifier)
+### Étape 4 - Clarification minimale
+- L'utilisateur peut répondre : `"J'ai répondu, mets à jour les tâches"`, `"Accepte toutes les hypothèses"`, `"Applique mes directives : ..."`, ou retour ciblé
+- Mettre à jour uniquement les tâches **sans** `-done`
+- **Maximum 2 rounds** de questions bloquantes. Au-delà, assumer intelligemment et présenter le plan final
 
-### Étape 6 - Fin du workflow
-- Quand, après relecture, il n'y a vraiment plus rien à clarifier
-- Supprimer le fichier `questions.md`
-- Présenter le plan final à l'utilisateur
+### Étape 5 - Clôture
+- Supprimer `questions.md` et `assumptions.md` (s'ils existent)
+- Présenter le plan d'exécution (ordre, dépendances, commandes type)
+- Annoncer prêt pour exécution par agent de code
 
-## Règle : clarification continue (obligatoire)
+## Règle : clarification minimale (obligatoire)
 
-**Ne jamais clôturer tant qu'il reste quelque chose à clarifier.** Après chaque mise à jour des tâches, relire le lot et poser de **nouvelles** questions si :
+- **Aligner sur l'existant en priorité** : si un pattern identique existe dans le repo, l'utiliser sans poser de question
+- **Questions uniquement bloquantes** : uniquement ce qui empêche un prompt exécutable avec critère "tests verts" satisfaisable
+- **Préférer hypothèses** : conventions, nommage, organisation → `assumptions.md`
+- **Critère d'arrêt** : *"Suffisant pour générer des prompts exécutables permettant d'obtenir des tests verts à chaque tâche"* — pas "zéro doute"
+- **Max 2 rounds** : limiter strictement les itérations
+- **Accepter directives** : appliquer immédiatement
 
-- un choix d'implémentation, une signature, un schéma ou un critère de tests reste ambigu ou incomplet ;
-- une réponse en soulève d'autres (ordre des tâches, modules touchés, profils Gradle, contrats d'API) ;
-- deux tâches se contredisent ou se chevauchent sans décision explicite ;
-- un point mérite une confirmation avant qu'un agent de code n'exécute le prompt.
+## Règle : qualité des questions (adaptable)
 
-**Préférer demander plutôt que d'assumer.** Ne pas inventer de décisions techniques pour « finir » plus vite. Une `questions.md` vide n'est valide qu'après une relecture active sans doute raisonnable.
+### Format condensé (préféré)
+```markdown
+### Q[X] - [Tâche/Contexte] - [Décision bloquante]
+**Enjeu :** Impact sur exécution / tests verts
+**Question :** [UNE décision]
+**Propositions :**
+- a) [Option 1] — Comportement + implications (fichiers/tests/ordre)
+- b) [Option 2] — Comportement + implications
+- c) Autre : [préciser]
+**Réponse :**
+```
 
-## Règle : qualité des questions (obligatoire)
+### Format complet (seulement impasse complexe)
+Inclure : **Enjeu**, **Contexte** (extraits tâche/story/code), **Dépendances**, **Question**, **Propositions** détaillées, **Réponse**. Citer `Tâche #YYY`, chemins, signatures si utile.
 
-Chaque entrée de `questions.md` doit permettre de répondre **en connaissance de cause**, sans devoir relire tous les prompts de tâches. Une question trop courte (« JSON API ou custom ? », « Ordre 001 puis 002 ? ») est **insuffisante**.
-
-Pour **chaque** question, inclure **tous** les blocs suivants :
-
-| Bloc | Contenu attendu |
-|------|-----------------|
-| **Enjeu** | Impact sur les prompts, l'ordre d'exécution, les modules, les tests verts |
-| **Contexte** | Extraits des tâches / story ; fichiers ou patterns déjà présents dans le repo ; ce qui est figé vs flou |
-| **Dépendances** | Tâches, signatures, schémas ou commandes de test impactés |
-| **Question** | Une seule décision, précise |
-| **Propositions** | ≥ 2 options (+ « Autre ») ; chaque option : comportement concret, implications (fichiers, tests, ordre), pertinence |
-| **Réponse** | Emplacement vide pour l'utilisateur |
-
-**Interdit :** options nues sans implications ; jargon non relié au code existant ; plusieurs décisions indépendantes dans une question.
-
-**Obligatoire :** citer `Tâche #YYY`, chemins (`crbpm/...`), et si utile un extrait de signature ou de critère. Recommandation possible avec justification, sans imposer.
-
-### Exécution et clôture d'une tâche (agent de code)
-
-Lorsqu'un agent implémente une tâche à partir de `tmp/<id>/story/task-YYY.md` :
-
-1. **Sélection** : choisir la prochaine tâche **sans** suffixe `-done`, en respectant l'ordre des dépendances déclarées dans les prompts.
-2. **Implémentation** : suivre le prompt ; satisfaire le critère « tests verts ».
-3. **Clôture obligatoire** — une fois la tâche validée :
-   - Renommer `task-YYY.md` → `task-YYY-done.md`
-   - Renommer aussi les fichiers associés : `task-YYY-examples.http` → `task-YYY-examples-done.http` (même règle : `-done` avant l'extension)
-   - Ne renommer **qu'après** succès des tests ; si la tâche échoue, laisser le fichier sans `-done`
-4. **Références** : dans les tâches suivantes, les dépendances pointent vers « Tâche #YYY » (numéro), pas le nom de fichier — le statut se lit via la présence ou non de `-done`.
-
-Lors d'une **mise à jour** des tâches (Étape 5), ne modifier que les fichiers **sans** `-done`, sauf demande explicite de l'utilisateur.
+**Interdits** : préférences esthétiques sans impact, options nues, multiples décisions.
 
 ## Principe : tests verts entre chaque tâche
 
-Chaque tâche générée est un **livrable mergeable** : à la fin de son exécution, l'agent de code doit pouvoir lancer la suite de tests concernée et obtenir **zéro échec**.
+- Chaque tâche doit être **mergeable** avec suite verte à la fin
+- **Déplacement atomique** : code + tests dans la même tâche
+- **Refactor transversal** : tous les appels/tests mis à jour dans la même tâche
+- **Pas de contournement** : jamais désactiver/supprimer des tests pour masquer une régression
+- **Critère obligatoire** dans chaque `task-YYY.md` avec commandes exactes par modules/profils
 
-| Règle | Détail |
-|-------|--------|
-| Pas de régression tolérée | Ne pas désactiver, supprimer ou assouplir des assertions pour « faire passer » la CI |
-| Déplacement atomique | Déplacer code **et** tests dans la même tâche ; lancer `:ancien-module:test` **et** `:nouveau-module:test` si les deux existent encore |
-| Refactor transversal | Renommage d'API, suppression d'enum, changement de signature : mettre à jour **tous** les producteurs, consommateurs et tests dans la même tâche |
-| Profils build | Si la story introduit des profils Gradle (`-Pcrbpm.engines=…`), préciser quel profil est obligatoire à chaque tâche (souvent le défaut rétrocompatible jusqu'à la tâche « wrapper-only ») |
-| Nouveaux tests | Les tests ajoutés complètent la couverture ; ils ne remplacent pas la régression existante |
-| Commande type | Depuis `crbpm/` : `.\gradlew :module:test` (et `build` si packaging touché). Pour une validation complète : skill `run-tests-dood` ou `.\gradlew test` sur les modules impactés |
-| Clôture `-done` | Après tests verts : renommer `task-YYY.md` → `task-YYY-done.md` (+ fichiers `.http` associés) |
+## Exécution et clôture (agent de code)
 
-Inclure systématiquement une section **« Critère de fin — tests verts »** dans chaque `task-YYY.md`, avec les commandes exactes, la liste des suites qui doivent rester vertes, et l'instruction de renommage `-done`.
+1. Prendre la prochaine tâche **sans** `-done`, respecter l'ordre des dépendances
+2. Suivre le prompt, valider avec les commandes du "Critère de fin — tests verts"
+3. **Clôturer uniquement si tests verts** : renommer `task-YYY.md` → `task-YYY-done.md` et `task-YYY-examples.http` → `task-YYY-examples-done.http`
+4. Ne jamais renommer en cas d'échec
 
-## Format des prompts détaillés
+**Lors de mise à jour (étape 4)** : ne modifier que les fichiers **sans** `-done`
 
-### Structure du prompt (task-YYY.md)
+## Format des prompts (task-YYY.md)
 
 ```markdown
-# Tâche #YYY - Story #XXX : [Titre de la tâche]
+# Tâche #YYY - Story #XXX : [Titre]
 
 ## Objectif
-[Description concise de ce que cette tâche doit livrer]
+[Ce que cette tâche doit livrer]
 
 ## Contexte
-- Story #XXX : `tmp/<id>/story.md`
+- Story #XXX : `docs/stories/<id>/story.md`
 - Dépend de : Tâche #ZZZ (si applicable)
 - Nécessaire pour : Tâche #WWW (si applicable)
+- Aligné sur : [référence vers pattern existant dans le repo]
 
 ## Prompt
-
-En tant qu'agent de code, tu dois implémenter ce qui suit.
-
-### Description fonctionnelle
-[Description détaillée du comportement attendu]
-
-**Cas nominaux :**
-- [Cas 1]
-- [Cas 2]
-
-**Cas limites :**
-- [Cas limite 1]
-- [Cas limite 2]
-
-**Gestion d'erreurs :**
-- [Erreur 1] → [Comportement attendu]
-- [Erreur 2] → [Comportement attendu]
+[Instructions détaillées pour l'agent de code]
 
 ### Fichiers concernés
-
 | Fichier | Action | Description |
 |---------|--------|-------------|
-| `src/feature/exemple.ts` | Créer | Nouveau service |
-| `src/feature/types.ts` | Modifier | Ajouter le type X |
-| `src/feature/__tests__/exemple.test.ts` | Créer | Tests unitaires |
+| ... | Créer/Modifier/Supprimer | ... |
 
-### Signatures
-
-```typescript
-// Fonction à implémenter
-function exemple(
-  param1: string,
-  param2: number
-): Promise<Resultat>
-```
-
-### Contraintes techniques
-- **Framework** : Utiliser [framework] (version X)
-- **Pattern** : Suivre le pattern [XXX] déjà utilisé dans [fichier de référence]
-- **Style** : Respecter la config ESLint et Prettier du projet
-- **Performance** : [contrainte si applicable]
-- **Sécurité** : [contrainte si applicable]
-- **Tests** : Coverage minimum de 80% pour cette tâche
+### Signatures / Structures
+[Types, DTO, interfaces, signatures clés]
 
 ### Tests à implémenter
-
-#### Tests unitaires
-- **Fichier** : `src/feature/__tests__/exemple.test.ts`
-- Scénario 1 : [Description]
-  - Données : [Input]
-  - Résultat attendu : [Output]
-- Scénario 2 : [Description]
-  - Données : [Input]
-  - Résultat attendu : [Output]
-
-#### Tests d'intégration
-- **Fichier** : `src/feature/__tests__/integration.test.ts`
-- Scénario : [Description]
+[Scénarios unitaires/intégration/E2E concrets]
 
 ### Critère de fin — tests verts (obligatoire)
-
-Avant de considérer la tâche terminée :
-
-1. **Régression** : toute la suite listée ci-dessous passe **sans échec** ; aucun test existant désactivé ou supprimé pour masquer une régression.
-2. **Commandes** (depuis `crbpm/`) :
-   - `.\gradlew :module-a:test :module-b:test` — adapter aux modules touchés
-   - `.\gradlew :backend:build -Pcrbpm.engines=wrapper,c8` — si profils engines applicables
-3. **Périmètre** : [modules, profils Gradle, live ITs gated si concernés]
-4. **Migration** : [si déplacement de code/tests — exiger colocalisation code + tests dans la même tâche]
-5. **Clôture** : renommer ce fichier en `task-YYY-done.md` (et `task-YYY-examples.http` → `task-YYY-examples-done.http` si présent) **uniquement** après validation des tests ci-dessus.
+1. Commandes depuis `crbpm/` (adapter aux modules touchés)
+   - `.\gradlew :module:test` ...
+2. Aucune régression, aucun test désactivé/supprimé
+3. Si déplacement/refactor : colocalisation code+tests
+4. Clôture : renommer en `task-YYY-done.md` (+ `.http` associé) après validation
 
 ### Documentation
-
-#### Documentation à créer
-- `docs/feature/README.md` : Documentation de la nouvelle fonctionnalité
-- `docs/feature/exemples.md` : Exemples d'utilisation
-
-#### Documentation à mettre à jour
-- `docs/api/README.md` : Ajouter la section sur le nouvel endpoint
+[À créer / à mettre à jour]
 
 ### Exemples d'API (si applicable)
-- Fichier : `tmp/<id>/story/task-YYY-examples.http`
-
-Voir les exemples de requêtes dans le fichier .http associé.
+`docs/stories/<id>/story/task-YYY-examples.http`
 ```
 
-### Format du fichier questions.md
-
+## assumptions.md (exemple)
 ```markdown
-# Questions de clarification - Story #XXX
+# Hypothèses & Conventions - Tâches Story #XXX
+
+## Conventions inférées (appliquées)
+- [INFÉRÉ - APPLIQUÉ] Nommage DTO : `*Request`/`*Response` (pattern observé dans `...`) 
+- [INFÉRÉ - APPLIQUÉ] Gestion d'erreurs : aligné sur `ErrorResponse` existant
+- [INFÉRÉ - APPLIQUÉ] Tests : placement `src/test/...` ou `src/integrationTest/...` selon module
+
+## Choix proposés (appliqués avec justification)
+- [PROPOSÉ - APPLIQUÉ] Découpage : [justification par dépendances]
+- [PROPOSÉ - APPLIQUÉ] Ordre : [justification]
+
+## À valider uniquement si impact bloquant
+- [À VALIDER - BLOQUANT] [uniquement en cas de vraie impasse]
+```
+
+## questions.md (uniquement bloquant)
+```markdown
+# Questions BLOQUANTES - Story #XXX
 
 ## Contexte global
-- Story #XXX : [Titre] (`tmp/<id>/story.md`)
-- Tâches générées : [liste avec titres]
-- Point d'attention : [ambiguïtés / incohérences principales]
+- Story : [titre]
+- Tâches générées : [liste]
+- Codebase aligné sur : [patterns identifiés]
+- Round : [1/2]
 
-## Questions
-
-### 1. [Tâche #002] — Format des erreurs API
-**Enjeu :** Le contrat d'erreur est référencé par #002 (endpoints) et #003 (tests + `.http`) ; un choix tardif force à réécrire les deux prompts.
-**Contexte :**
-- Story : « erreurs structurées » sans schéma précis.
-- Tâche #002 propose un body d'erreur ; le module API existant utilise déjà [citer le pattern réel du repo, ex. `WRP-AREA-NNNN` + `traceId`].
-- Aucune décision écrite sur JSON:API vs envelope maison.
-**Dépendances :** Signatures/DTO de #002 ; assertions de #003 ; exemples `.http`.
-**Question :** Quel format de réponse d'erreur pour les endpoints de cette story ?
+## Questions bloquantes
+### 1. [Tâche #XXX / Incohérence] — [Titre]
+**Enjeu :** [Pourquoi bloque un prompt exécutable ou des tests verts]
+**Contexte :** [Extraits pertinents]
+**Dépendances :** [Tâches/signatures/modules]
+**Question :** [UNE décision]
 **Propositions :**
-- a) **Alignement CRBPM existant** (`code`, `message`, `traceId`, HTTP status) — Implications : réutiliser les types/handlers existants ; #002/#003 citent les mêmes champs ; pas de JSON:API.
-- b) **JSON:API errors** — Implications : nouveau contrat ; migration ou dual-stack à clarifier ; plus de travail dans #002 et tests.
-- c) Autre : coller un exemple JSON attendu pour 400 et 404.
-**Réponse :**
-
-### 2. [Incohérence #001 vs #002] — Nom du DTO de création
-**Enjeu :** #002 importe un type que #001 nomme autrement → échec de compilation entre tâches « vertes ».
-**Contexte :**
-- Tâche #001 définit `CreateTaskRequest`.
-- Tâche #002 référence `NewTaskDto` dans ses signatures.
-- Package cible : `com.moodys.crbpm.…` [chemin].
-**Dépendances :** Signatures #001/#002 ; tests des deux tâches.
-**Question :** Quel nom canonique pour le DTO de création ?
-**Propositions :**
-- a) **`CreateTaskRequest`** — Aligner #002 et ses tests sur #001.
-- b) **`NewTaskDto`** — Renommer dans #001 (et tests #001) avant #002.
-- c) Autre : nom + justification (convention du module).
-**Réponse :**
-
-### 3. [Ambiguïté story] — Périmètre des profils Gradle engines
-**Enjeu :** Sans profils explicites, le critère « tests verts » de chaque tâche est ambigu (wrapper seul vs wrapper,c8).
-**Contexte :** Story touche éventuellement `engine-spi` / `engine-c8` ; défaut repo documenté dans AGENTS.md.
-**Dépendances :** Section « Critère de fin — tests verts » de chaque tâche.
-**Question :** Quels profils `-Pcrbpm.engines=…` sont obligatoires à la clôture de #001, #002, #003 ?
-**Propositions :**
-- a) **Défaut rétrocompatible** (`wrapper,c8` ou défaut projet) pour toutes les tâches jusqu'à une tâche « wrapper-only » dédiée.
-- b) **Profil minimal dès #001** — Préciser la matrice tâche × profil.
-- c) Autre : tableau tâche → commandes Gradle exactes.
+- a) [...]
+- b) [...]
+- c) Autre : [...]
 **Réponse :**
 ```
 
 ## Comment passer d'une étape à l'autre
 
-| Transition | Action de l'utilisateur | Action de l'agent |
-|------------|------------------------|-------------------|
-| Étape 1 | Donner le numéro de story (ex: `/ tasks 001`) | Lit la story, le contexte projet |
-| Étape 1 → 2 | Automatique | Découpe et génère les prompts détaillés |
-| Étape 2 → 3 | Automatique | Vérifie la cohérence des tâches |
-| Étape 3 → 4 | Automatique | Crée `questions.md` avec les points à clarifier |
-| Étape 4 → 5 | Répondre dans `questions.md` puis taper `J'ai répondu, mets à jour les tâches` | Met à jour les tâches selon les réponses |
-| Étape 5 → 3 | Automatique | Re-vérifie la cohérence ; **régénère `questions.md` s'il reste des ambiguïtés** |
-| Étape 5 → 6 | Automatique (plus de questions **après relecture**) | Supprime `questions.md`, présente le plan final |
+| Transition | Action utilisateur | Action agent |
+|------------|--------------------|--------------|
+| Début | `/ tasks-fr <id>` | Inspecte story + codebase, génère tâches alignées + assumptions |
+| Après génération | `"Accepte toutes les hypothèses"` OU répondre questions bloquantes OU `"Applique mes directives : ..."` | Met à jour si réponses/directives |
+| Mise à jour | `"J'ai répondu, mets à jour les tâches"` | Met à jour uniquement tâches sans `-done` ; re-vérifie (max 2 rounds) |
+| Fin | Automatique si pas de blocages | Supprime questions.md/assumptions.md, présente plan final |
 
-**Important :** L'agent ne surveille pas les modifications de fichiers en temps réel. L'utilisateur doit donner une instruction explicite pour passer à l'étape suivante.
-
-## Exemple d'utilisation
-
-**Lancement :**
-```
-/ tasks 001
-```
-
-**Lecture de `tmp/001/story.md` :**
-Story décrivant la création d'une API REST de gestion de tâches avec création, lecture, mise à jour et suppression.
-
-**Découpage en 3 tâches avec prompts détaillés :**
-- `tmp/001/story/task-001.md` : Modèle de données, base et validations
-- `tmp/001/story/task-002.md` : Endpoints CRUD complets avec signatures et gestion d'erreurs
-- `tmp/001/story/task-003.md` : Tests automatisés, documentation et fichiers `.http`
-
-**Vérification de cohérence :**
-- Tâche #002 référence un type défini dans tâche #001 → OK
-- Tâche #003 couvre tous les cas de test des critères d'acceptation → OK
-- Gestion d'erreurs : tâche #002 et spécification alignées → OK
-- Chaque tâche inclut un critère de fin « tests verts » avec commandes Gradle → OK
-- Aucune tâche ne laisse la suite en rouge entre deux livrables → OK
-
-**Création de `tmp/001/story/questions.md` :**
-- Question sur le format de retour des erreurs (JSON API vs standard)
-- Question sur l'ordre d'exécution des tâches (tâche #001 doit précéder #002)
-
-**Mise à jour :**
-L'utilisateur répond, l'agent met à jour les tâches, itération jusqu'à résolution complète.
-
-**Exécution (agent de code) :**
-Après implémentation de la tâche #001 et tests verts :
-- `tmp/001/story/task-001.md` → `tmp/001/story/task-001-done.md`
-- Passer à `task-002.md` (sans `-done`) une fois les dépendances satisfaites.
+**Important :** Ne pas modifier les tâches avec `-done`. Toujours donner une instruction explicite.
