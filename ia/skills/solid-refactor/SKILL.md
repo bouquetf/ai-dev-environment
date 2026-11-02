@@ -86,7 +86,6 @@ Report failures with the failing test names and whether they existed before the 
 
 1. Update each applied finding in the report: `Decision: applied` (or `deferred — <reason>`), plus the files touched.
 2. In chat, state what changed and what it bought: the findings applied, the files touched, the verification result, and anything deliberately left out.
-3. Offer a commit message via the **`commit-message-crbpm`** skill — type `refactor`, scope from the touched module, single `Refs: ATL-<id>` footer. Do not commit unless the user asks.
 
 ## Guardrails
 

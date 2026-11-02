@@ -1,6 +1,6 @@
 ---
 name: feedback-fr
-description: Génération de stories à partir de feedbacks utilisateurs, en filtrant ceux déjà traités ; continue de poser des questions tant qu'il reste des ambiguïtés
+description: Génération de stories à partir de feedbacks utilisateurs, en filtrant ceux déjà traités ; pose uniquement des questions bloquantes, avec au plus une vague de suivi
 ---
 
 # Skill: Feedback → Stories / Spécification (FR)
@@ -10,7 +10,7 @@ Ce guide décrit comment transformer des feedbacks utilisateurs en user stories 
 ## Qu'est-ce que je fais
 
 Je prends le fichier `docs/specification/feedbacks.md`, j'identifie les feedbacks qui n'ont pas encore été traités. Je **regroupe d'abord les feedbacks par thème** — plusieurs feedbacks sur un même sujet donnent une seule unité de travail. Pour chaque groupe :
-- **Si le sujet est simple** → je génère une ou plusieurs stories directement (au même format que story-fr) avec le processus itératif de questions/réponses.
+- **Si le sujet est simple** → je génère une ou plusieurs stories directement (au même format que story-fr) avec une clarification bornée aux décisions bloquantes.
 - **Si le sujet est complexe** (nouvelle fonctionnalité transverse, multiple sous-sujets, impact architectural) → je crée une sous-spécification dans `docs/specification/features/`, je l'affine via le processus specification-fr, puis je la découpe en stories via story-fr.
 
 **Règle :** plusieurs feedbacks liés → un seul regroupement → une seule story (si simple) ou une seule sous-spécification (si complexe). Pas de doublon.
@@ -114,13 +114,13 @@ Feedback du [DATE] : "[texte du feedback]"
 ```
 
 - Ajouter une section `## Origine` pour tracer le feedback source
-- Marquer chaque feedback traité dans `docs/specification/feedbacks.md` avec `[PROCESSED: story-XXX]`
+- Marquer chaque feedback traité dans `docs/specification/feedbacks.md` avec `[PROCESSED: story-XXX]` uniquement à la clôture, après résolution des points bloquants
 - Exemple : `* Ne pas afficher d'accueil [PROCESSED: story-018]`
 
 #### Étape 5a - Création du fichier de questions
 
-- Créer `docs/stories/questions.md` (ou s'il existe déjà, le compléter)
-- Contient les questions de clarification pour les nouvelles stories générées
+- Créer ou compléter `docs/stories/questions.md` uniquement si une décision bloquante doit être posée
+- Le fichier contient les questions de clarification bloquantes pour les nouvelles stories générées
 - Appliquer la règle « qualité des questions » (identique à story-fr / specification-fr) : enjeu, contexte ancré dans le feedback + stories existantes, dépendances, propositions détaillées avec implications, emplacement de réponse
 - Pour chaque question, rappeler le feedback source (date + extrait) et les stories déjà proches si un risque de doublon existe
 
@@ -129,15 +129,17 @@ Feedback du [DATE] : "[texte du feedback]"
 - Analyser les nouvelles stories
 - Vérifier la cohérence avec la spécification `docs/specification/specification.md`
 - Vérifier la cohérence avec les stories existantes dans `docs/stories/done/`
-- Ajouter des questions dans `docs/stories/questions.md` si nécessaire (format « qualité des questions » obligatoire)
+- Ajouter des questions dans `docs/stories/questions.md` uniquement si une décision bloquante reste nécessaire (format « qualité des questions » obligatoire)
 
 #### Étape 7a - Mise à jour
 
 - L'utilisateur répond aux questions dans `docs/stories/questions.md`
 - L'utilisateur tape : `J'ai répondu aux questions, mets à jour les stories`
 - Mettre à jour les stories selon les réponses
-- **Relire les stories mises à jour** : s'il reste des ambiguïtés, points flous, inconsistances, ou sujets qui méritent une réponse supplémentaire → régénérer / compléter `questions.md`
-- Retourner à l'Étape 6a (ne pas clôturer tant qu'il reste quelque chose à clarifier)
+- **Relire les stories mises à jour** pour vérifier leur cohérence et que les réponses ont bien été prises en compte
+- Ne créer **qu'une seule vague de suivi au maximum** pour cette unité de travail, et seulement si une réponse révèle un nouveau point bloquant qui n'était pas raisonnablement prévisible dans la première vague
+- Si aucun point bloquant ne subsiste, supprimer `questions.md` et passer à l'Étape 8 ; ne pas relancer une analyse dans le seul but de trouver d'autres questions
+- Si un point bloquant majeur reste sans réponse après l'unique vague de suivi, le signaler explicitement comme limite ouverte et ne pas marquer le feedback `[PROCESSED: …]` tant que son périmètre ne peut pas être traité de façon fiable
 
 ---
 
@@ -149,13 +151,13 @@ Feedback du [DATE] : "[texte du feedback]"
 - Créer le fichier `docs/specification/features/feedback-XXX.md` (XXX = nom court du sujet, ex: `feedback-archives-matchs.md`)
 - Copier le texte du feedback dans le fichier comme base de spécification
 - Ajouter la section `## Origine` avec la date et le texte du feedback source
-- Structurer le fichier avec des placeholders `[À_CLARIFIER: ...]` sur les points flous
-- Créer `docs/specification/features/questions.md` avec :
+- Structurer le fichier avec des placeholders `[À_CLARIFIER: ...]` uniquement pour les décisions bloquantes ; documenter les hypothèses retenues pour les points non bloquants
+- Créer `docs/specification/features/questions.md` uniquement si des décisions bloquantes restent à trancher ; le fichier contient :
   - Le contexte global (feedbacks regroupés, sous-spécification cible)
   - Les questions de clarification au format « qualité des questions » (enjeu, contexte, dépendances, propositions détaillées, réponse)
-  - Les inconsistances détectées (même niveau de détail)
+  - Les inconsistances qui entraînent une décision bloquante (même niveau de détail)
   - Pour chaque question : extrait du feedback d'origine et lien avec la spécification principale si pertinent
-- **Marquer le feedback** dans `docs/specification/feedbacks.md` avec le marqueur `[PROCESSED: feature-XXX.md]`
+- Marquer le feedback dans `docs/specification/feedbacks.md` avec `[PROCESSED: feature-XXX.md]` uniquement à la clôture, après résolution des points bloquants
 
 #### Étape 5b - Itération de spécification
 
@@ -163,19 +165,19 @@ Feedback du [DATE] : "[texte du feedback]"
 - L'utilisateur tape : `J'ai répondu aux questions, continue`
 - Lire les réponses, mettre à jour `feedback-XXX.md` en remplaçant les placeholders par les réponses
 - Résoudre les inconsistances identifiées
-- **Relire la sous-spécification** : s'il reste des `[À_CLARIFIER: ...]`, `[INCONSISTANCE: ...]`, **ou tout point encore ambigu / flou / digne d'une réponse supplémentaire** :
-  - **Oui** → générer un nouveau `questions.md` avec les questions restantes (et les nouvelles) → retour au début de l'Étape 5b
-  - **Non** → supprimer `questions.md` → passer à l'Étape 6b
+- **Relire la sous-spécification** : les placeholders ou inconsistances restants ne justifient un suivi que s'ils bloquent une décision de périmètre, d'architecture, de critères d'acceptation ou de découpage en stories
+- Ne créer **qu'une seule vague de suivi au maximum** pour cette unité de travail, et seulement si une réponse révèle un nouveau point bloquant qui n'était pas raisonnablement prévisible dans la première vague
+- Si aucun point bloquant ne subsiste, supprimer `questions.md` et passer à l'Étape 6b ; documenter les hypothèses non bloquantes dans la sous-spécification
+- Si un point bloquant majeur reste sans réponse après l'unique vague de suivi, le signaler explicitement comme limite ouverte et ne pas marquer le feedback `[PROCESSED: …]` tant que son périmètre ne peut pas être traité de façon fiable
 
 #### Étape 6b - Découpage en stories (story-fr)
 
-- La sous-spécification est complète (plus de placeholders **et** plus d'ambiguïté utile après relecture)
+- La sous-spécification est prête à être découpée (plus de placeholders bloquants ni de décision bloquante ouverte)
 - Exécuter le workflow story-fr sur `docs/specification/features/feedback-XXX.md` :
   - Lire la spécification
   - Découper en user stories dans `docs/stories/` (chacune avec la section `## Origine` pointant vers `feature-XXX.md`)
-  - Créer `docs/stories/questions.md` si des points restent flous
-  - Appliquer le cycle itératif de questions/réponses propre à story-fr (**règle de clarification continue** : ne pas clôturer tant qu'il reste quelque chose à clarifier)
-- Une fois les stories finalisées (plus de questions utiles après relecture) :
+  - Créer `docs/stories/questions.md` uniquement pour les décisions bloquantes, en appliquant la règle de clarification bornée ci-dessous ; le quota de suivi du groupe ne se réinitialise pas au découpage en stories
+- Une fois les stories finalisées (aucun point bloquant ouvert) :
   - Mettre à jour `feedbacks.md` si des sous-feedbacks doivent être marqués individuellement
   - Annoncer les stories créées
 
@@ -183,8 +185,9 @@ Feedback du [DATE] : "[texte du feedback]"
 
 ### Étape 8 - Fin du workflow
 
-- Quand, pour tous les chemins, il n'y a vraiment plus rien à clarifier après relecture
+- Quand, pour tous les chemins, il ne reste aucun point bloquant après la vague initiale et, si nécessaire, l'unique vague de suivi
 - Supprimer le fichier `questions.md` s'il existe
+- Marquer les feedbacks nouvellement traités dans `docs/specification/feedbacks.md` avec `[PROCESSED: …]` après résolution des points bloquants
 - Déplacer les nouvelles stories dans `docs/stories/done/` (ou les laisser dans `docs/stories/` selon la convention)
 - **Mettre à jour le plan d'implémentation** `docs/stories/plan-implementation.md` (voir règle ci-dessous)
 - Mettre à jour `AGENTS.md` et `workflow.md` si nécessaire
@@ -199,16 +202,20 @@ Feedback du [DATE] : "[texte du feedback]"
 - Les dépendances vers une story `-done` sont considérées comme satisfaites : ne pas bloquer une story ouverte sur une story terminée dans le diagramme.
 - Si le fichier n'existe pas encore, le créer. Ne pas régénérer le plan tant que des questions bloquantes restent ouvertes.
 
-## Règle : clarification continue (obligatoire)
+## Règle : clarification bornée (obligatoire)
 
-**Ne jamais clôturer tant qu'il reste quelque chose à clarifier.** Après chaque mise à jour (stories ou sous-spécification), relire le résultat et poser de **nouvelles** questions si :
+Le but des questions est de débloquer une décision nécessaire, pas d'éliminer toute incertitude. Poser une question uniquement si la réponse peut changer de façon importante au moins un des éléments suivants :
 
-- un feedback, un critère, un rôle ou un périmètre reste ambigu ou incomplet ;
-- une réponse en soulève d'autres (implications, cas limites, chevauchement avec des stories existantes) ;
-- le regroupement simple vs complexe, ou le découpage en stories, mérite une confirmation ;
-- un point mérite une réponse supplémentaire avant de marquer un feedback `[PROCESSED: …]` comme définitivement traité.
+- le périmètre ou les critères d'acceptation, au point de rendre la story non testable ou de provoquer un travail sensiblement différent ;
+- le choix entre nouvelle story, extension d'une story existante ou sous-spécification ;
+- le découpage, une dépendance structurante ou une décision d'architecture ;
+- le fait qu'un feedback soit déjà couvert ou puisse être marqué `[PROCESSED: …]`.
 
-**Préférer demander plutôt que d'assumer.** L'absence de placeholders formels ne suffit pas : s'il reste un doute raisonnable, écrire la question et continuer le cycle.
+Ne pas questionner le naming, le polish, des détails d'implémentation, des cas limites non demandés ou une préférence sans impact matériel. Ne pas redemander une décision déjà donnée, sauf si la réponse contredit une autre exigence et rend le résultat incohérent.
+
+Quand un point n'est pas bloquant, retenir l'hypothèse la plus simple compatible avec le feedback, la spécification et les stories existantes, puis la noter brièvement dans la story ou la sous-spécification si elle a un effet visible. Ne pas transformer chaque hypothèse en question.
+
+Pour chaque unité de travail (un groupe de feedbacks et toutes les stories ou sous-spécifications qui en découlent), préparer une vague initiale de questions, puis **au plus une vague de suivi** si les réponses font apparaître un nouveau blocage. Ce quota vaut pour tout le groupe, y compris le passage de la sous-spécification aux stories ; il ne se réinitialise pas à chaque étape. Après cette vague, trancher les détails restants par hypothèse documentée et clôturer ; ne pas relancer une relecture pour chercher d'autres questions. Si un blocage majeur demeure après l'unique vague de suivi, le signaler explicitement comme limite ouverte plutôt que poursuivre une boucle de questions ; ne pas marquer le feedback `[PROCESSED: …]` si son périmètre ne peut pas être traité de façon fiable.
 
 ## Règle : qualité des questions (obligatoire)
 
@@ -227,7 +234,7 @@ Pour **chaque** question, inclure **tous** les blocs suivants :
 
 **Interdit :** options nues ; questions sans rappeler le feedback source ; plusieurs décisions indépendantes dans une question.
 
-**Obligatoire :** citer date + extrait du feedback, et les ids de stories/features concernés. Recommandation possible avec justification, sans imposer.
+**Obligatoire pour une question bloquante :** citer date + extrait du feedback et les ids de stories/features concernés lorsqu'ils existent. Adapter la longueur du contexte et des propositions à l'enjeu ; ne pas ajouter de détails spéculatifs. Recommandation possible avec justification, sans imposer.
 
 ### Exemple de question (chemin A ou B)
 
@@ -267,7 +274,12 @@ Pour **chaque** question, inclure **tous** les blocs suivants :
 - b) **Déjà couvert par story-XXX** — Marquer `[PROCESSED: story-XXX]` ; pas de nouvelle story.
 - c) Autre : préciser l'écart restant par rapport à story-XXX.
 **Réponse :**
+
 ```
+
+### Exemple de détail non bloquant (ne pas ajouter comme question)
+
+Si le feedback demande une popup d'aide sans préciser son intitulé, choisir un libellé cohérent avec le vocabulaire existant et le noter comme hypothèse seulement si cela affecte les critères. Ne pas interrompre le traitement pour demander une préférence de nommage.
 
 ```markdown
 ## [DATE]
@@ -317,11 +329,11 @@ Les feedbacks sans marqueur sont à traiter.
 | Étape 1 → 2 | Donner le chemin du fichier de feedbacks en argument | Lit les feedbacks, analyse les stories existantes |
 | Étape 2 → 3 | Automatique | Regroupe les feedbacks non traités par thème et décide simple/complexe |
 | Étape 3 → 4a | Automatique (sujet simple) | Génère les nouvelles stories dans docs/stories/ |
-| Étape 4a → 5a | Automatique après génération | Crée questions.md avec les points à clarifier |
+| Étape 4a → 5a | Automatique après génération | Crée questions.md uniquement si des décisions bloquantes restent à clarifier |
 | Étape 5a → 6a | Automatique | Analyse les stories et ajoute les questions |
 | Étape 6a → 7a | Taper "J'ai répondu aux questions, mets à jour les stories" | Met à jour les stories selon les réponses |
-| Étape 7a → 6a | Automatique après mise à jour | Re-vérifie la cohérence ; **régénère `questions.md` s'il reste des ambiguïtés** |
-| Étape 7a → 8 | Automatique (plus de questions **après relecture**) | Supprime questions.md, marque les feedbacks traités, met à jour le plan (sans stories `-done`), annonce la fin |
+| Étape 7a → 6a | Automatique après mise à jour | Re-vérifie les réponses ; une unique vague de suivi est permise si une réponse révèle un nouveau point bloquant |
+| Étape 7a → 8 | Automatique (aucun point bloquant restant) | Supprime questions.md, marque les feedbacks traités, met à jour le plan (sans stories `-done`), annonce la fin |
 
 ### Chemin B — Sujet complexe
 
@@ -329,11 +341,11 @@ Les feedbacks sans marqueur sont à traiter.
 |------------|------------------------|-------------------|
 | Étape 1 → 2 | Donner le chemin du fichier de feedbacks en argument | Lit les feedbacks, analyse les stories existantes |
 | Étape 2 → 3 | Automatique | Regroupe les feedbacks non traités par thème et décide simple/complexe |
-| Étape 3 → 4b | Automatique (sujet complexe) | Crée docs/specification/features/feedback-XXX.md + questions.md |
+| Étape 3 → 4b | Automatique (sujet complexe) | Crée la sous-spécification et questions.md uniquement si des décisions bloquantes restent à clarifier |
 | Étape 4b → 5b | Automatique | Attend les réponses de l'utilisateur |
-| Étape 5b → 5b | Taper "J'ai répondu aux questions, continue" | Met à jour la spec ; **relit** ; régénère `questions.md` s'il reste placeholders **ou** ambiguïtés |
-| Étape 5b → 6b | Automatique (plus de placeholders **ni d'ambiguïté utile après relecture**) | Supprime questions.md, exécute story-fr sur la sous-spécification |
-| Étape 6b → 8 | Automatique (stories finalisées **après clarification continue**) | Annonce les stories créées, met à jour le plan (sans stories `-done`) |
+| Étape 5b → 5b | Taper "J'ai répondu aux questions, continue" | Met à jour et relit la spec ; une unique vague de suivi est permise si les réponses révèlent un nouveau point bloquant |
+| Étape 5b → 6b | Automatique (aucun point bloquant restant) | Supprime questions.md, documente les hypothèses non bloquantes et exécute story-fr sur la sous-spécification |
+| Étape 6b → 8 | Automatique (stories sans point bloquant ouvert) | Annonce les stories créées, met à jour le plan (sans stories `-done`) |
 
 **Important :** L'agent ne surveille pas les modifications de fichiers en temps réel. L'utilisateur doit toujours donner une instruction explicite pour que l'agent passe à l'étape suivante.
 
@@ -345,7 +357,7 @@ Les feedbacks sans marqueur sont à traiter.
 / feedback feedbacks.md
 ```
 
-L'agent lit `docs/specification/feedbacks.md`, identifie les feedbacks non marqués, vérifie les stories existantes, et génère les nouvelles stories avec le processus itératif de clarification.
+L'agent lit `docs/specification/feedbacks.md`, identifie les feedbacks non marqués, vérifie les stories existantes, et génère les nouvelles stories avec une clarification bornée aux décisions bloquantes.
 
 ### Cas complexe — Sous-spécification puis stories
 
@@ -357,7 +369,7 @@ L'agent lit `docs/specification/feedbacks.md`, détecte qu'un feedback (ex: "Arc
 
 1. Crée `docs/specification/features/feedback-archives-matchs.md`
 2. Génère `docs/specification/features/questions.md` avec des questions détaillées (enjeu, contexte issu du feedback, propositions avec implications — rôles, relations entre données, etc.)
-3. Itère avec l'utilisateur jusqu'à spécification complète
+3. Traite les décisions bloquantes avec une vague initiale et, si une réponse révèle un nouveau blocage, au plus une vague de suivi
 4. Supprime `questions.md`
 5. Exécute story-fr sur la spécification pour la découper en plusieurs stories
 6. Marque le feedback original comme `[PROCESSED: feature-archives-matchs.md]`
@@ -369,4 +381,4 @@ Si un feedback non marqué est déjà couvert par une story existante :
 1. L'agent l'identifie lors de l'Étape 2
 2. Il ajoute le marqueur `[PROCESSED: story-XXX]` dans le fichier feedbacks.md
 3. Il n'en génère pas de nouvelle story
-4. Il peut notifier l'utilisateur du doublon dans questions.md
+4. Il signale le doublon dans le bilan, sans créer de question si aucune décision bloquante n'est nécessaire
