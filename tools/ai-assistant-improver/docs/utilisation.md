@@ -35,3 +35,15 @@ Several repositories can appear in the list.
 Remove takes the repository off the list. The clone on disk and the files already installed in the open project stay in place.
 
 Enabled assistants and repositories are settings of the open project. Language remains a setting of the whole IDE.
+
+## Components
+
+For each added repository, the page lists the skills, agents, and rules it finds.
+
+- A skill is a folder that contains `SKILL.md`, under `.cursor/skills`, `.agents/skills`, `.claude/skills`, `.opencode/skills`, `.junie/skills`, or `ia/skills`.
+- An agent is a `.md` file in an `agents` folder of `.cursor`, `.claude`, `.opencode`, or `.junie`.
+- A rule is a `.md` or `.mdc` file in a `rules` folder of those same four roots, or `CLAUDE.md` at the repository root, or `.junie/guidelines.md`.
+- Two skills with the same folder name at two paths stay two entries.
+- Every component starts selected. Unchecking one is kept the next time the repository is read. A component that appears later starts selected.
+- A repository with nothing recognized shows an empty list and no error.
+- The selection is a setting of the open project, together with the enabled assistants and the repositories.

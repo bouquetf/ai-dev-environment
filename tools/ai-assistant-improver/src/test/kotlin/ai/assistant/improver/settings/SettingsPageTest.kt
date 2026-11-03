@@ -3,6 +3,8 @@ package ai.assistant.improver.settings
 import ai.assistant.improver.assistant.AssistantCatalog
 import ai.assistant.improver.assistant.AssistantId
 import ai.assistant.improver.assistant.EnabledAssistants
+import ai.assistant.improver.component.ComponentKind
+import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
@@ -45,10 +47,20 @@ class SettingsPageTest {
         }
     }
 
+    private class MemoryComponentSelectionStore(
+        var value: ComponentSelection = ComponentSelection(),
+    ) : ComponentSelectionStore {
+        override fun read(): ComponentSelection = value
+        override fun write(value: ComponentSelection) {
+            this.value = value
+        }
+    }
+
     private val assistants = MemoryAssistantStore()
     private val language = MemoryLanguageStore()
     private val repositories = MemoryRepositoryStore()
-    private val page = AssistantSettingsConfigurable(assistants, language, repositories)
+    private val selection = MemoryComponentSelectionStore()
+    private val page = AssistantSettingsConfigurable(assistants, language, repositories, selection)
     private val panel = page.createComponent() as SettingsPanel
 
     private fun check(wire: String): JCheckBox = panel.assistantChecks().first { it.name == wire }
@@ -257,6 +269,87 @@ class SettingsPageTest {
         assertEquals("Pas un répertoire : $file", panel.repositoryError().text)
     }
 
+    @Test
+    fun `a repository without components shows no checkbox and no error`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        Files.writeString(repo.resolve("README.md"), "notes")
+        addPath(repo)
+        assertTrue(panel.componentChecks(repo.toRealPath().toString()).isEmpty())
+        assertEquals("", panel.repositoryError().text)
+    }
+
+    @Test
+    fun `discovered components start selected and apply keeps the selection store empty`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/review/SKILL.md")
+        write(repo, ".cursor/agents/reviewer.md")
+        addPath(repo)
+        val path = repo.toRealPath().toString()
+        val checks = panel.componentChecks(path)
+        assertEquals(listOf("Skill ia/skills/review", "Agent .cursor/agents/reviewer.md"), checks.map { it.text })
+        assertTrue(checks.all { it.isSelected })
+        page.apply()
+        assertEquals(ComponentSelection(), selection.value)
+        assertFalse(page.isModified)
+    }
+
+    @Test
+    fun `unchecking a skill is persisted and leaves the file in place`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        val skill = write(repo, "ia/skills/review/SKILL.md", "kept")
+        addPath(repo)
+        val path = repo.toRealPath().toString()
+        panel.componentChecks(path).single().doClick()
+        assertTrue(page.isModified)
+        assertEquals("kept", Files.readString(skill))
+        page.apply()
+        val entry = selection.value.entries().single()
+        assertEquals(path, entry.repositoryPath)
+        assertEquals(ComponentKind.SKILL, entry.id.kind)
+        assertEquals("ia/skills/review", entry.id.relativePath)
+        assertFalse(page.isModified)
+    }
+
+    @Test
+    fun `reset restores a checkbox that was not applied`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/review/SKILL.md")
+        addPath(repo)
+        page.apply()
+        val path = repo.toRealPath().toString()
+        panel.componentChecks(path).single().doClick()
+        page.reset()
+        assertTrue(panel.componentChecks(path).single().isSelected)
+        assertEquals(ComponentSelection(), selection.value)
+    }
+
+    @Test
+    fun `a file added on disk is selected and the stored uncheck remains`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/review/SKILL.md")
+        addPath(repo)
+        val path = repo.toRealPath().toString()
+        panel.componentChecks(path).single().doClick()
+        page.apply()
+        write(repo, ".cursor/skills/other/SKILL.md")
+        panel.syncFromModel()
+        val checks = panel.componentChecks(path)
+        assertEquals(listOf("Skill .cursor/skills/other", "Skill ia/skills/review"), checks.map { it.text })
+        assertTrue(checks[0].isSelected)
+        assertFalse(checks[1].isSelected)
+        assertFalse(page.isModified)
+        assertEquals("ia/skills/review", selection.value.entries().single().id.relativePath)
+    }
+
+    @Test
+    fun `french labels a rule`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "CLAUDE.md", "guide")
+        addPath(repo)
+        panel.languageCombo().selectedItem = UiLanguage.FRENCH
+        assertEquals("Règle CLAUDE.md", panel.componentChecks(repo.toRealPath().toString()).single().text)
+    }
+
     private fun gitDirectory(root: Path, name: String): Path {
         val repo = Files.createDirectories(root.resolve(name))
         Files.createDirectories(repo.resolve(".git"))
@@ -266,6 +359,13 @@ class SettingsPageTest {
     private fun addPath(path: Path) {
         panel.repositoryPathField().text = path.toString()
         panel.addButton().doClick()
+    }
+
+    private fun write(root: Path, relative: String, content: String = "x"): Path {
+        val path = relative.split('/').fold(root) { parent, name -> parent.resolve(name) }
+        Files.createDirectories(path.parent)
+        Files.writeString(path, content)
+        return path
     }
 
     private fun rowPath(row: Component): String =

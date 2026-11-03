@@ -3,23 +3,37 @@ package ai.assistant.improver.settings
 import ai.assistant.improver.assistant.AssistantCatalog
 import ai.assistant.improver.assistant.AssistantId
 import ai.assistant.improver.assistant.EnabledAssistants
+import ai.assistant.improver.component.ComponentDiscovery
+import ai.assistant.improver.component.ComponentId
+import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
 import ai.assistant.improver.repository.SourceRepositories
+import java.nio.file.Path
 
 data class AssistantRow(val id: AssistantId, val label: String, val selected: Boolean)
 
 data class LanguageChoice(val language: UiLanguage, val label: String, val selected: Boolean)
 
+data class ComponentRow(
+    val repositoryPath: String,
+    val id: ComponentId,
+    val label: String,
+    val selected: Boolean,
+)
+
 class SettingsViewModel(
     assistants: EnabledAssistants,
     language: LanguagePreference,
     repositories: SourceRepositories = SourceRepositories(),
+    selection: ComponentSelection = ComponentSelection(),
+    private val discover: (Path) -> List<ComponentId> = { ComponentDiscovery.discover(it) },
     private val labelsFor: (UiLanguage) -> Labels = { Labels.load(it) },
 ) {
     private var assistants: EnabledAssistants = assistants
     private var language: LanguagePreference = language
+    private var selection: ComponentSelection = selection
     val repositorySettings: RepositorySettings = RepositorySettings(repositories)
 
     private val labels: Labels
@@ -63,11 +77,38 @@ class SettingsViewModel(
         this.language = this.language.withLanguage(language)
     }
 
+    val componentRows: List<ComponentRow>
+        get() {
+            val current = labels
+            return repositorySettings.current().entries().flatMap { repository ->
+                val discovered = discover(Path.of(repository.path))
+                selection.components(repository.path, discovered).map { component ->
+                    val kindLabel = current.text("settings.components.${component.id.kind.wire}")
+                    ComponentRow(
+                        repository.path,
+                        component.id,
+                        "$kindLabel ${component.id.relativePath}",
+                        component.selected,
+                    )
+                }
+            }
+        }
+
+    fun setComponentSelected(repositoryPath: String, id: ComponentId, selected: Boolean) {
+        selection = selection.setSelected(repositoryPath, id, selected)
+    }
+
     fun labels(): Labels = labels
 
-    fun reload(assistants: EnabledAssistants, language: LanguagePreference, repositories: SourceRepositories) {
+    fun reload(
+        assistants: EnabledAssistants,
+        language: LanguagePreference,
+        repositories: SourceRepositories,
+        selection: ComponentSelection,
+    ) {
         this.assistants = assistants
         this.language = language
+        this.selection = selection
         repositorySettings.replace(repositories)
     }
 
@@ -76,4 +117,6 @@ class SettingsViewModel(
     fun language(): LanguagePreference = language
 
     fun repositories(): SourceRepositories = repositorySettings.current()
+
+    fun selection(): ComponentSelection = selection
 }

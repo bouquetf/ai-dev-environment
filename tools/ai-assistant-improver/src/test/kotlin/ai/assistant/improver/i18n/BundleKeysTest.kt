@@ -26,6 +26,9 @@ class BundleKeysTest {
         "settings.error.repository.notDirectory" to "Not a directory: {0}",
         "settings.error.repository.notGit" to "This directory does not contain .git: {0}",
         "settings.error.repository.duplicate" to "This repository is already listed: {0}",
+        "settings.components.skill" to "Skill",
+        "settings.components.agent" to "Agent",
+        "settings.components.rule" to "Rule",
     )
 
     private val french = english + mapOf(
@@ -42,6 +45,7 @@ class BundleKeysTest {
         "settings.error.repository.notDirectory" to "Pas un répertoire : {0}",
         "settings.error.repository.notGit" to "Ce répertoire ne contient pas .git : {0}",
         "settings.error.repository.duplicate" to "Ce dépôt est déjà dans la liste : {0}",
+        "settings.components.rule" to "Règle",
     )
 
     @Test

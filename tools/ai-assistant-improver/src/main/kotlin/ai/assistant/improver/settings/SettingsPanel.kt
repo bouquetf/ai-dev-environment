@@ -19,6 +19,7 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
     private val checks: List<JCheckBox>
     private val combo = JComboBox(UiLanguage.entries.toTypedArray())
     private var syncing = false
+    private val componentChecks = mutableListOf<JCheckBox>()
     private val repositorySection = RepositorySettingsSection(
         settings = model.repositorySettings,
         labelsOf = { model.labels() },
@@ -95,6 +96,9 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
 
     fun removeButton(path: String): JButton = repositorySection.removeButton(path)
 
+    fun componentChecks(repositoryPath: String): List<JCheckBox> =
+        componentChecks.filter { it.getClientProperty(COMPONENT_REPOSITORY) == repositoryPath }
+
     fun syncFromModel() {
         syncing = true
         try {
@@ -109,8 +113,42 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
             combo.selectedItem = model.language().language
             combo.repaint()
             repositorySection.sync()
+            rebuildComponentChecks()
         } finally {
             syncing = false
         }
+    }
+
+    private fun rebuildComponentChecks() {
+        componentChecks.forEach { check -> check.parent?.remove(check) }
+        componentChecks.clear()
+        val grouped = model.componentRows.groupBy { it.repositoryPath }
+        model.repositories().entries().zip(repositorySection.rows()).forEach { (repository, row) ->
+            val parent = row.parent as? JPanel ?: return@forEach
+            val insertAt = parent.components.indexOf(row) + 1
+            grouped[repository.path].orEmpty().forEachIndexed { index, line ->
+                val check = JCheckBox(line.label)
+                check.name = "component.check"
+                check.alignmentX = Component.LEFT_ALIGNMENT
+                check.putClientProperty(COMPONENT_REPOSITORY, line.repositoryPath)
+                check.putClientProperty(COMPONENT_WIRE, "${line.id.kind.wire}:${line.id.relativePath}")
+                check.isSelected = line.selected
+                check.addActionListener {
+                    if (!syncing) {
+                        model.setComponentSelected(line.repositoryPath, line.id, check.isSelected)
+                        syncFromModel()
+                    }
+                }
+                parent.add(check, insertAt + index)
+                componentChecks += check
+            }
+        }
+        revalidate()
+        repaint()
+    }
+
+    companion object {
+        private const val COMPONENT_REPOSITORY = "componentRepository"
+        private const val COMPONENT_WIRE = "componentWire"
     }
 }

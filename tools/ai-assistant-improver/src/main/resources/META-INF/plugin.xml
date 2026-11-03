@@ -9,6 +9,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="ai.assistant.improver.settings.EnabledAssistantsService"/>
         <projectService serviceImplementation="ai.assistant.improver.settings.SourceRepositoriesService"/>
+        <projectService serviceImplementation="ai.assistant.improver.settings.ComponentSelectionService"/>
         <applicationService serviceImplementation="ai.assistant.improver.settings.LanguageService"/>
         <projectConfigurable
                 instance="ai.assistant.improver.settings.AssistantSettingsConfigurable"

@@ -8,6 +8,9 @@ import ai.assistant.improver.i18n.UiLanguage
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import ai.assistant.improver.repository.SourceRepository
+import ai.assistant.improver.component.ComponentId
+import ai.assistant.improver.component.ComponentKind
+import ai.assistant.improver.component.ComponentSelection
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -123,5 +126,75 @@ class SettingsServicesTest {
         service.loadState(bean)
         assertEquals("C:\\missing\\repo", service.current().entries().single().path)
         assertEquals(RepositoryMode.SYNCHRONISATION, service.current().entries().single().mode)
+    }
+
+    @Test
+    fun `component selection service round trips its bean`() {
+        val service = ComponentSelectionService()
+        assertTrue(service.current().entries().isEmpty())
+        service.replace(
+            ComponentSelection()
+                .setSelected("C:\\repo", ComponentId(ComponentKind.SKILL, "ia/skills/review"), false)
+                .setSelected("C:\\repo", ComponentId(ComponentKind.AGENT, ".cursor/agents/reviewer.md"), false),
+        )
+        val bean = service.state
+        assertEquals(listOf("ia/skills/review", ".cursor/agents/reviewer.md"), bean.deselected.map { it.path })
+        assertEquals(listOf("skill", "agent"), bean.deselected.map { it.kind })
+
+        val restored = ComponentSelectionService()
+        restored.loadState(bean)
+        assertEquals(service.current(), restored.current())
+    }
+
+    @Test
+    fun `component selection service refuses an unknown kind`() {
+        val bean = ComponentSelectionBean().apply {
+            deselected = mutableListOf(
+                DeselectedComponentBean().apply {
+                    repository = "C:\\repo"
+                    kind = "prompt"
+                    path = "ia/skills/review"
+                },
+            )
+        }
+        assertThrows<IllegalArgumentException> { ComponentSelectionService().loadState(bean) }
+    }
+
+    @Test
+    fun `component selection service refuses a duplicate`() {
+        val bean = ComponentSelectionBean().apply {
+            deselected = mutableListOf(
+                DeselectedComponentBean().apply {
+                    repository = "C:\\repo"
+                    kind = "skill"
+                    path = "ia/skills/review"
+                },
+                DeselectedComponentBean().apply {
+                    repository = "C:\\repo"
+                    kind = "skill"
+                    path = "ia/skills/review"
+                },
+            )
+        }
+        assertThrows<IllegalArgumentException> { ComponentSelectionService().loadState(bean) }
+    }
+
+    @Test
+    fun `component selection service does not require the files to exist`() {
+        val bean = ComponentSelectionBean().apply {
+            deselected = mutableListOf(
+                DeselectedComponentBean().apply {
+                    repository = "C:\\missing\\repo"
+                    kind = "skill"
+                    path = "ia/skills/missing"
+                },
+            )
+        }
+        val service = ComponentSelectionService()
+        service.loadState(bean)
+        val entry = service.current().entries().single()
+        assertEquals("C:\\missing\\repo", entry.repositoryPath)
+        assertEquals(ComponentKind.SKILL, entry.id.kind)
+        assertEquals("ia/skills/missing", entry.id.relativePath)
     }
 }
