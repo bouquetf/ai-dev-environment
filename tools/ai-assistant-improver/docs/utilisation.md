@@ -47,3 +47,17 @@ For each added repository, the page lists the skills, agents, and rules it finds
 - Every component starts selected. Unchecking one is kept the next time the repository is read. A component that appears later starts selected.
 - A repository with nothing recognized shows an empty list and no error.
 - The selection is a setting of the open project, together with the enabled assistants and the repositories.
+
+## Import
+
+**Import** copies each selected component into the open project, for every assistant that is checked on the page.
+
+- A skill is copied to `<assistant>/skills/<folder>/`. The folder name is the directory that contains `SKILL.md`. `ia/skills/specification-fr/` becomes `.cursor/skills/specification-fr/` when Cursor is checked, and the same folder under `.claude`, `.opencode`, and `.junie` when those assistants are checked.
+- An agent is copied to `<assistant>/agents/` under its file name only. A rule that comes from a `rules` directory is copied to `<assistant>/rules/` and keeps its path under `rules/`.
+- `CLAUDE.md` is copied to the project root only when Claude is checked. `.junie/guidelines.md` is copied to `.junie/guidelines.md` only when Junie is checked.
+- An enabled assistant with no target for a component is skipped for that component. The page says so, and the other targets are still copied.
+- The first time a destination is missing, the copy runs without a question. The plugin records a snapshot of the installed files.
+- When the destination still matches that snapshot, the source is copied again and the snapshot is updated.
+- When the destination differs and the repository is download only, the page asks before overwriting. Cancel leaves the destination and the snapshot unchanged. Confirm overwrites and updates the snapshot.
+- When the destination differs and the repository is in synchronisation, the local files stay, the page says they were kept, and the snapshot is not updated.
+- Import saves the snapshot immediately. It does not replace **Apply** for assistants, language, repositories, or the selection. Removing an assistant, a repository, or a component does not delete files already copied.

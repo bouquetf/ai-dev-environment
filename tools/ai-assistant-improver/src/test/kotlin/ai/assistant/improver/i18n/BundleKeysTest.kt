@@ -29,6 +29,11 @@ class BundleKeysTest {
         "settings.components.skill" to "Skill",
         "settings.components.agent" to "Agent",
         "settings.components.rule" to "Rule",
+        "settings.import.action" to "Import",
+        "settings.import.confirmTitle" to "Overwrite local changes",
+        "settings.import.confirm" to "Overwrite local changes in {0}?",
+        "settings.import.noTarget" to "{0} has no folder for {1}.",
+        "settings.import.kept" to "Local changes kept for {0}.",
     )
 
     private val french = english + mapOf(
@@ -46,6 +51,11 @@ class BundleKeysTest {
         "settings.error.repository.notGit" to "Ce répertoire ne contient pas .git : {0}",
         "settings.error.repository.duplicate" to "Ce dépôt est déjà dans la liste : {0}",
         "settings.components.rule" to "Règle",
+        "settings.import.action" to "Importer",
+        "settings.import.confirmTitle" to "Écraser les modifications locales",
+        "settings.import.confirm" to "Écraser les modifications locales dans {0} ?",
+        "settings.import.noTarget" to "{0} : aucun dossier pour {1}.",
+        "settings.import.kept" to "Modifications locales conservées pour {0}.",
     )
 
     @Test

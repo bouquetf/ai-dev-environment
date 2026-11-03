@@ -4,22 +4,33 @@ import ai.assistant.improver.assistant.EnabledAssistants
 import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
+import ai.assistant.improver.install.InstallationSnapshot
+import ai.assistant.improver.install.OverwriteConfirmation
 import ai.assistant.improver.repository.SourceRepositories
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
+import java.nio.file.Path
 import javax.swing.JComponent
+import javax.swing.JOptionPane
 
 class AssistantSettingsConfigurable(
     private val assistantsStore: AssistantStore,
     private val languageStore: LanguageStore,
     private val repositoryStore: RepositoryStore,
     private val selectionStore: ComponentSelectionStore,
+    private val snapshotStore: InstallationSnapshotStore,
+    private val confirmOverwrite: OverwriteConfirmation = OverwriteConfirmation { false },
+    private val projectRoot: () -> Path = { error("No project directory") },
+    private val dialogConfirmation: Boolean = false,
 ) : Configurable {
     constructor(project: Project) : this(
         ProjectAssistantStore(project),
         ApplicationLanguageStore(),
         ProjectRepositoryStore(project),
         ProjectComponentSelectionStore(project),
+        ProjectInstallationSnapshotStore(project),
+        projectRoot = { Path.of(requireNotNull(project.basePath) { "Project has no base path" }) },
+        dialogConfirmation = true,
     )
 
     private class Baseline(
@@ -53,9 +64,26 @@ class AssistantSettingsConfigurable(
             baseline.language,
             baseline.repositories,
             baseline.selection,
+            snapshotStore.read(),
         )
         model = created
-        return SettingsPanel(created).also { panel = it }
+        val confirm = if (dialogConfirmation) dialogConfirm(created) else confirmOverwrite
+        return SettingsPanel(
+            created,
+            projectRoot,
+            confirm,
+            onImported = { snapshotStore.write(it) },
+        ).also { panel = it }
+    }
+
+    private fun dialogConfirm(model: SettingsViewModel): OverwriteConfirmation = OverwriteConfirmation { prompt ->
+        val labels = model.labels()
+        JOptionPane.showConfirmDialog(
+            panel,
+            ImportMessages.confirm(labels, prompt.destinationPath),
+            labels.text("settings.import.confirmTitle"),
+            JOptionPane.YES_NO_OPTION,
+        ) == JOptionPane.YES_OPTION
     }
 
     override fun isModified(): Boolean {
@@ -80,7 +108,13 @@ class AssistantSettingsConfigurable(
     override fun reset() {
         val current = model ?: return
         baseline = storedBaseline()
-        current.reload(baseline.assistants, baseline.language, baseline.repositories, baseline.selection)
+        current.reload(
+            baseline.assistants,
+            baseline.language,
+            baseline.repositories,
+            baseline.selection,
+            snapshotStore.read(),
+        )
         panel?.syncFromModel()
     }
 

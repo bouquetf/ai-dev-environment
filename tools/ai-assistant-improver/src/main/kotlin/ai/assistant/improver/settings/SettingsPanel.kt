@@ -1,8 +1,13 @@
 package ai.assistant.improver.settings
 
 import ai.assistant.improver.i18n.UiLanguage
+import ai.assistant.improver.install.ImportAction
+import ai.assistant.improver.install.ImportReport
+import ai.assistant.improver.install.InstallationSnapshot
+import ai.assistant.improver.install.OverwriteConfirmation
 import ai.assistant.improver.repository.RepositoryMode
 import java.awt.Component
+import java.nio.file.Path
 import javax.swing.BoxLayout
 import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
@@ -13,13 +18,34 @@ import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.JTextField
 
-class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
+class SettingsPanel(
+    private val model: SettingsViewModel,
+    private val projectRoot: () -> Path,
+    private val confirm: OverwriteConfirmation,
+    private val onImported: (InstallationSnapshot) -> Unit,
+) : JPanel() {
     private val assistantsHeading = JLabel()
     private val languageHeading = JLabel()
     private val checks: List<JCheckBox>
     private val combo = JComboBox(UiLanguage.entries.toTypedArray())
     private var syncing = false
     private val componentChecks = mutableListOf<JCheckBox>()
+    private val importButton = JButton().also { button ->
+        button.name = "import.button"
+        button.alignmentX = Component.LEFT_ALIGNMENT
+        button.addActionListener {
+            if (!syncing) {
+                val report = model.importSelected(projectRoot(), confirm)
+                onImported(report.snapshot)
+                showNotices(report)
+            }
+        }
+    }
+    private val importNotices = JLabel().apply {
+        name = "import.notices"
+        text = ""
+        alignmentX = Component.LEFT_ALIGNMENT
+    }
     private val repositorySection = RepositorySettingsSection(
         settings = model.repositorySettings,
         labelsOf = { model.labels() },
@@ -99,6 +125,10 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
     fun componentChecks(repositoryPath: String): List<JCheckBox> =
         componentChecks.filter { it.getClientProperty(COMPONENT_REPOSITORY) == repositoryPath }
 
+    fun importButton(): JButton = importButton
+
+    fun importNotices(): JLabel = importNotices
+
     fun syncFromModel() {
         syncing = true
         try {
@@ -114,9 +144,34 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
             combo.repaint()
             repositorySection.sync()
             rebuildComponentChecks()
+            importButton.text = model.labels().text("settings.import.action")
+            placeImportControls()
         } finally {
             syncing = false
         }
+    }
+
+    private fun showNotices(report: ImportReport) {
+        val labels = model.labels()
+        val lines = report.destinations.mapNotNull { destination ->
+            when (destination.action) {
+                ImportAction.NO_TARGET -> ImportMessages.noTarget(
+                    labels,
+                    labels.text("settings.assistants.${destination.assistant.wire}"),
+                    destination.component.relativePath,
+                )
+                ImportAction.KEPT -> ImportMessages.kept(labels, requireNotNull(destination.destinationPath))
+                ImportAction.COPIED, ImportAction.REFUSED -> null
+            }
+        }
+        importNotices.text = lines.joinToString("\n")
+    }
+
+    private fun placeImportControls() {
+        remove(importButton)
+        remove(importNotices)
+        add(importButton)
+        add(importNotices)
     }
 
     private fun rebuildComponentChecks() {

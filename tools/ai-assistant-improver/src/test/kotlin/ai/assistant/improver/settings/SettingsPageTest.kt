@@ -6,12 +6,16 @@ import ai.assistant.improver.assistant.EnabledAssistants
 import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
+import ai.assistant.improver.install.InstallationSnapshot
+import ai.assistant.improver.install.OverwriteConfirmation
+import ai.assistant.improver.install.OverwritePrompt
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -56,11 +60,21 @@ class SettingsPageTest {
         }
     }
 
+    private class MemoryInstallationSnapshotStore(
+        var value: InstallationSnapshot = InstallationSnapshot(),
+    ) : InstallationSnapshotStore {
+        override fun read(): InstallationSnapshot = value
+        override fun write(value: InstallationSnapshot) {
+            this.value = value
+        }
+    }
+
     private val assistants = MemoryAssistantStore()
     private val language = MemoryLanguageStore()
     private val repositories = MemoryRepositoryStore()
     private val selection = MemoryComponentSelectionStore()
-    private val page = AssistantSettingsConfigurable(assistants, language, repositories, selection)
+    private val snapshot = MemoryInstallationSnapshotStore()
+    private val page = AssistantSettingsConfigurable(assistants, language, repositories, selection, snapshot)
     private val panel = page.createComponent() as SettingsPanel
 
     private fun check(wire: String): JCheckBox = panel.assistantChecks().first { it.name == wire }
@@ -350,6 +364,157 @@ class SettingsPageTest {
         assertEquals("Règle CLAUDE.md", panel.componentChecks(repo.toRealPath().toString()).single().text)
     }
 
+    @Test
+    fun `import copies the selected skill and saves the snapshot without apply`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        val (importPage, importPanel) = openImport(project)
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+        importPage.apply()
+        assertFalse(importPage.isModified)
+        val assistantsBefore = assistants.value
+        val repositoriesBefore = repositories.value
+
+        importPanel.importButton().doClick()
+
+        assertEquals("specification", read(project, ".cursor/skills/specification-fr/SKILL.md"))
+        assertEquals(
+            ".cursor/skills/specification-fr/SKILL.md",
+            snapshot.value.files().single().destinationPath,
+        )
+        assertFalse(importPage.isModified)
+        assertEquals(ComponentSelection(), selection.value)
+        assertEquals(assistantsBefore, assistants.value)
+        assertEquals(repositoriesBefore, repositories.value)
+    }
+
+    @Test
+    fun `an unchecked skill is not imported and the uncheck is not persisted`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        val (_, importPanel) = openImport(project)
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+        importPanel.componentChecks(repo.toRealPath().toString()).single().doClick()
+
+        importPanel.importButton().doClick()
+
+        assertEquals(emptyList<Path>(), Files.list(project).use { it.toList() })
+        assertEquals(ComponentSelection(), selection.value)
+        assertEquals(InstallationSnapshot(), snapshot.value)
+    }
+
+    @Test
+    fun `download only confirmation is supplied by the test`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        val source = write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        val prompts = mutableListOf<OverwritePrompt>()
+        var allow = false
+        val (_, importPanel) = openImport(project, prompts) { allow }
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+
+        importPanel.importButton().doClick()
+
+        assertTrue(prompts.isEmpty())
+        val installed = resolve(project, ".cursor/skills/specification-fr/SKILL.md")
+        Files.writeString(installed, "local-edit")
+        val digestBefore = snapshot.value.files().single().sha256
+        importPanel.importButton().doClick()
+        assertEquals(".cursor/skills/specification-fr", prompts.single().destinationPath)
+        assertEquals("local-edit", Files.readString(installed))
+        assertEquals(digestBefore, snapshot.value.files().single().sha256)
+        Files.writeString(source, "revised")
+        allow = true
+        importPanel.importButton().doClick()
+        assertEquals("revised", Files.readString(installed))
+        assertNotEquals(digestBefore, snapshot.value.files().single().sha256)
+        assertEquals("", importPanel.importNotices().text)
+    }
+
+    @Test
+    fun `a missing target is reported and the other copy still happens`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        write(repo, "CLAUDE.md", "guide")
+        val (_, importPanel) = openImport(project)
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+
+        importPanel.importButton().doClick()
+
+        assertEquals("specification", read(project, ".cursor/skills/specification-fr/SKILL.md"))
+        assertFalse(exists(project, "CLAUDE.md"))
+        assertEquals("Cursor has no folder for CLAUDE.md.", importPanel.importNotices().text)
+    }
+
+    @Test
+    fun `french notice uses the french bundle`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        write(repo, "CLAUDE.md", "guide")
+        val (_, importPanel) = openImport(project)
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+        importPanel.languageCombo().selectedItem = UiLanguage.FRENCH
+
+        importPanel.importButton().doClick()
+
+        assertEquals("Cursor : aucun dossier pour CLAUDE.md.", importPanel.importNotices().text)
+    }
+
+    @Test
+    fun `synchronisation keeps the local file and shows the notice`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        val prompts = mutableListOf<OverwritePrompt>()
+        val (importPage, importPanel) = openImport(project, prompts) { false }
+        importPanel.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(importPanel, repo)
+        importPage.apply()
+        importPanel.importButton().doClick()
+        val installed = resolve(project, ".cursor/skills/specification-fr/SKILL.md")
+        Files.writeString(installed, "local-edit")
+        val digestBefore = snapshot.value.files().single().sha256
+        val path = repo.toRealPath().toString()
+        importPanel.modeCombo(path).selectedItem = RepositoryMode.SYNCHRONISATION
+        importPage.apply()
+
+        importPanel.importButton().doClick()
+
+        assertTrue(prompts.isEmpty())
+        assertEquals("local-edit", Files.readString(installed))
+        assertEquals("Local changes kept for .cursor/skills/specification-fr.", importPanel.importNotices().text)
+        assertEquals(digestBefore, snapshot.value.files().single().sha256)
+    }
+
+    private fun openImport(
+        project: Path,
+        prompts: MutableList<OverwritePrompt> = mutableListOf(),
+        allow: () -> Boolean = { false },
+    ): Pair<AssistantSettingsConfigurable, SettingsPanel> {
+        val configurable = AssistantSettingsConfigurable(
+            assistants,
+            language,
+            repositories,
+            selection,
+            snapshot,
+            confirmOverwrite = OverwriteConfirmation { prompt ->
+                prompts += prompt
+                allow()
+            },
+            projectRoot = { project },
+        )
+        return configurable to configurable.createComponent() as SettingsPanel
+    }
+
     private fun gitDirectory(root: Path, name: String): Path {
         val repo = Files.createDirectories(root.resolve(name))
         Files.createDirectories(repo.resolve(".git"))
@@ -357,16 +522,27 @@ class SettingsPageTest {
     }
 
     private fun addPath(path: Path) {
-        panel.repositoryPathField().text = path.toString()
-        panel.addButton().doClick()
+        addPath(panel, path)
+    }
+
+    private fun addPath(target: SettingsPanel, path: Path) {
+        target.repositoryPathField().text = path.toString()
+        target.addButton().doClick()
     }
 
     private fun write(root: Path, relative: String, content: String = "x"): Path {
-        val path = relative.split('/').fold(root) { parent, name -> parent.resolve(name) }
+        val path = resolve(root, relative)
         Files.createDirectories(path.parent)
         Files.writeString(path, content)
         return path
     }
+
+    private fun read(root: Path, relative: String): String = Files.readString(resolve(root, relative))
+
+    private fun exists(root: Path, relative: String): Boolean = Files.exists(resolve(root, relative))
+
+    private fun resolve(root: Path, relative: String): Path =
+        relative.split('/').fold(root) { parent, name -> parent.resolve(name) }
 
     private fun rowPath(row: Component): String =
         (row as JPanel).components.filterIsInstance<JLabel>().single().text

@@ -9,6 +9,10 @@ import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
+import ai.assistant.improver.install.ComponentImport
+import ai.assistant.improver.install.ImportReport
+import ai.assistant.improver.install.InstallationSnapshot
+import ai.assistant.improver.install.OverwriteConfirmation
 import ai.assistant.improver.repository.SourceRepositories
 import java.nio.file.Path
 
@@ -28,12 +32,14 @@ class SettingsViewModel(
     language: LanguagePreference,
     repositories: SourceRepositories = SourceRepositories(),
     selection: ComponentSelection = ComponentSelection(),
+    snapshot: InstallationSnapshot = InstallationSnapshot(),
     private val discover: (Path) -> List<ComponentId> = { ComponentDiscovery.discover(it) },
     private val labelsFor: (UiLanguage) -> Labels = { Labels.load(it) },
 ) {
     private var assistants: EnabledAssistants = assistants
     private var language: LanguagePreference = language
     private var selection: ComponentSelection = selection
+    private var snapshot: InstallationSnapshot = snapshot
     val repositorySettings: RepositorySettings = RepositorySettings(repositories)
 
     private val labels: Labels
@@ -100,15 +106,31 @@ class SettingsViewModel(
 
     fun labels(): Labels = labels
 
+    fun importSelected(projectRoot: Path, confirm: OverwriteConfirmation): ImportReport {
+        val report = ComponentImport.import(
+            projectRoot,
+            repositories(),
+            selection,
+            assistants,
+            snapshot,
+            confirm,
+            discover,
+        )
+        snapshot = report.snapshot
+        return report
+    }
+
     fun reload(
         assistants: EnabledAssistants,
         language: LanguagePreference,
         repositories: SourceRepositories,
         selection: ComponentSelection,
+        snapshot: InstallationSnapshot,
     ) {
         this.assistants = assistants
         this.language = language
         this.selection = selection
+        this.snapshot = snapshot
         repositorySettings.replace(repositories)
     }
 
@@ -119,4 +141,6 @@ class SettingsViewModel(
     fun repositories(): SourceRepositories = repositorySettings.current()
 
     fun selection(): ComponentSelection = selection
+
+    fun snapshot(): InstallationSnapshot = snapshot
 }

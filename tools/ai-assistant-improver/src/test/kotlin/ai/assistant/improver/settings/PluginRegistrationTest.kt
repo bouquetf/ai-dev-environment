@@ -21,9 +21,9 @@ class PluginRegistrationTest {
     }
 
     @Test
-    fun `project services register assistants, repositories, then components`() {
+    fun `project services register assistants, repositories, components, then snapshot`() {
         val services = elements("projectService")
-        assertEquals(3, services.size)
+        assertEquals(4, services.size)
         assertEquals(
             "ai.assistant.improver.settings.EnabledAssistantsService",
             services[0].getAttribute("serviceImplementation"),
@@ -35,6 +35,10 @@ class PluginRegistrationTest {
         assertEquals(
             "ai.assistant.improver.settings.ComponentSelectionService",
             services[2].getAttribute("serviceImplementation"),
+        )
+        assertEquals(
+            "ai.assistant.improver.settings.InstallationSnapshotService",
+            services[3].getAttribute("serviceImplementation"),
         )
     }
 

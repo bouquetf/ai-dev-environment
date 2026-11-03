@@ -11,6 +11,8 @@ import ai.assistant.improver.repository.SourceRepository
 import ai.assistant.improver.component.ComponentId
 import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.component.ComponentSelection
+import ai.assistant.improver.install.InstallationSnapshot
+import ai.assistant.improver.install.InstalledFile
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -196,5 +198,95 @@ class SettingsServicesTest {
         assertEquals("C:\\missing\\repo", entry.repositoryPath)
         assertEquals(ComponentKind.SKILL, entry.id.kind)
         assertEquals("ia/skills/missing", entry.id.relativePath)
+    }
+
+    @Test
+    fun `installation snapshot service round trips its bean`() {
+        val service = InstallationSnapshotService()
+        assertTrue(service.current().files().isEmpty())
+        val skillDigest = "a".repeat(64)
+        val ruleDigest = "b".repeat(64)
+        service.replace(
+            InstallationSnapshot.restore(
+                listOf(
+                    InstalledFile(
+                        "C:\\repo",
+                        ComponentId(ComponentKind.SKILL, "ia/skills/specification-fr"),
+                        "ia/skills/specification-fr/SKILL.md",
+                        ".cursor/skills/specification-fr/SKILL.md",
+                        skillDigest,
+                    ),
+                    InstalledFile(
+                        "C:\\repo",
+                        ComponentId(ComponentKind.RULE, "CLAUDE.md"),
+                        "CLAUDE.md",
+                        "CLAUDE.md",
+                        ruleDigest,
+                    ),
+                ),
+            ),
+        )
+        val bean = service.state
+        assertEquals(
+            listOf(".cursor/skills/specification-fr/SKILL.md", "CLAUDE.md"),
+            bean.files.map { it.destination },
+        )
+        assertEquals(listOf("skill", "rule"), bean.files.map { it.kind })
+
+        val restored = InstallationSnapshotService()
+        restored.loadState(bean)
+        assertEquals(service.current(), restored.current())
+    }
+
+    @Test
+    fun `installation snapshot service refuses an unknown kind`() {
+        val bean = InstallationSnapshotBean().apply {
+            files = mutableListOf(snapshotBean(kind = "prompt"))
+        }
+        assertThrows<IllegalArgumentException> { InstallationSnapshotService().loadState(bean) }
+    }
+
+    @Test
+    fun `installation snapshot service refuses a duplicate destination`() {
+        val bean = InstallationSnapshotBean().apply {
+            files = mutableListOf(snapshotBean(), snapshotBean(source = "CLAUDE.md"))
+        }
+        assertThrows<IllegalArgumentException> { InstallationSnapshotService().loadState(bean) }
+    }
+
+    @Test
+    fun `installation snapshot service does not require the files to exist`() {
+        val bean = InstallationSnapshotBean().apply {
+            files = mutableListOf(
+                snapshotBean(
+                    repository = "C:\\missing\\repo",
+                    component = "ia/skills/missing",
+                    source = "ia/skills/missing/SKILL.md",
+                    destination = ".cursor/skills/missing/SKILL.md",
+                ),
+            )
+        }
+        val service = InstallationSnapshotService()
+        service.loadState(bean)
+        val file = service.current().files().single()
+        assertEquals("C:\\missing\\repo", file.repositoryPath)
+        assertEquals("ia/skills/missing/SKILL.md", file.sourcePath)
+        assertEquals(".cursor/skills/missing/SKILL.md", file.destinationPath)
+    }
+
+    private fun snapshotBean(
+        repository: String = "C:\\repo",
+        kind: String = "skill",
+        component: String = "ia/skills/specification-fr",
+        source: String = "ia/skills/specification-fr/SKILL.md",
+        destination: String = ".cursor/skills/specification-fr/SKILL.md",
+        sha256: String = "a".repeat(64),
+    ): InstalledFileBean = InstalledFileBean().apply {
+        this.repository = repository
+        this.kind = kind
+        this.component = component
+        this.source = source
+        this.destination = destination
+        this.sha256 = sha256
     }
 }

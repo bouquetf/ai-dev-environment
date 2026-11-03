@@ -10,6 +10,7 @@
         <projectService serviceImplementation="ai.assistant.improver.settings.EnabledAssistantsService"/>
         <projectService serviceImplementation="ai.assistant.improver.settings.SourceRepositoriesService"/>
         <projectService serviceImplementation="ai.assistant.improver.settings.ComponentSelectionService"/>
+        <projectService serviceImplementation="ai.assistant.improver.settings.InstallationSnapshotService"/>
         <applicationService serviceImplementation="ai.assistant.improver.settings.LanguageService"/>
         <projectConfigurable
                 instance="ai.assistant.improver.settings.AssistantSettingsConfigurable"
