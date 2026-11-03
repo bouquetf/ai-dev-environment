@@ -1,0 +1,17 @@
+<idea-plugin>
+    <id>ai.assistant.improver</id>
+    <name>AI Assistant Improver</name>
+    <vendor>AI Assistant Improver</vendor>
+    <description>Installs skills, agents, and rules from git repositories into the enabled coding assistants.</description>
+    <depends>com.intellij.modules.platform</depends>
+    <idea-version since-build="262"/>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="ai.assistant.improver.settings.EnabledAssistantsService"/>
+        <applicationService serviceImplementation="ai.assistant.improver.settings.LanguageService"/>
+        <projectConfigurable
+                instance="ai.assistant.improver.settings.AssistantSettingsConfigurable"
+                id="ai.assistant.improver.settings"
+                displayName="AI Assistant Improver"/>
+    </extensions>
+</idea-plugin>
