@@ -13,6 +13,11 @@ import ai.assistant.improver.install.ComponentImport
 import ai.assistant.improver.install.ImportReport
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.OverwriteConfirmation
+import ai.assistant.improver.publish.ComponentPublish
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.ProcessGit
+import ai.assistant.improver.publish.PublishConfirmation
+import ai.assistant.improver.publish.PublishReport
 import ai.assistant.improver.repository.SourceRepositories
 import java.nio.file.Path
 
@@ -35,6 +40,7 @@ class SettingsViewModel(
     snapshot: InstallationSnapshot = InstallationSnapshot(),
     private val discover: (Path) -> List<ComponentId> = { ComponentDiscovery.discover(it) },
     private val labelsFor: (UiLanguage) -> Labels = { Labels.load(it) },
+    private val git: GitCommand = ProcessGit,
 ) {
     private var assistants: EnabledAssistants = assistants
     private var language: LanguagePreference = language
@@ -116,6 +122,12 @@ class SettingsViewModel(
             confirm,
             discover,
         )
+        snapshot = report.snapshot
+        return report
+    }
+
+    fun publishSelected(projectRoot: Path, confirm: PublishConfirmation): PublishReport {
+        val report = ComponentPublish.publish(projectRoot, repositories(), snapshot, confirm, git)
         snapshot = report.snapshot
         return report
     }

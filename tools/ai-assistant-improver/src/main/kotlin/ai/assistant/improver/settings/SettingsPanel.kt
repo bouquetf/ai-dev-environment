@@ -5,6 +5,8 @@ import ai.assistant.improver.install.ImportAction
 import ai.assistant.improver.install.ImportReport
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.OverwriteConfirmation
+import ai.assistant.improver.publish.PublishConfirmation
+import ai.assistant.improver.publish.PublishReport
 import ai.assistant.improver.repository.RepositoryMode
 import java.awt.Component
 import java.nio.file.Path
@@ -23,6 +25,8 @@ class SettingsPanel(
     private val projectRoot: () -> Path,
     private val confirm: OverwriteConfirmation,
     private val onImported: (InstallationSnapshot) -> Unit,
+    private val confirmPublish: PublishConfirmation,
+    private val onPublished: (InstallationSnapshot) -> Unit,
 ) : JPanel() {
     private val assistantsHeading = JLabel()
     private val languageHeading = JLabel()
@@ -43,6 +47,22 @@ class SettingsPanel(
     }
     private val importNotices = JLabel().apply {
         name = "import.notices"
+        text = ""
+        alignmentX = Component.LEFT_ALIGNMENT
+    }
+    private val publishButton = JButton().also { button ->
+        button.name = "publish.button"
+        button.alignmentX = Component.LEFT_ALIGNMENT
+        button.addActionListener {
+            if (!syncing) {
+                val report = model.publishSelected(projectRoot(), confirmPublish)
+                onPublished(report.snapshot)
+                showPublishNotices(report)
+            }
+        }
+    }
+    private val publishNotices = JLabel().apply {
+        name = "publish.notices"
         text = ""
         alignmentX = Component.LEFT_ALIGNMENT
     }
@@ -129,6 +149,10 @@ class SettingsPanel(
 
     fun importNotices(): JLabel = importNotices
 
+    fun publishButton(): JButton = publishButton
+
+    fun publishNotices(): JLabel = publishNotices
+
     fun syncFromModel() {
         syncing = true
         try {
@@ -145,7 +169,8 @@ class SettingsPanel(
             repositorySection.sync()
             rebuildComponentChecks()
             importButton.text = model.labels().text("settings.import.action")
-            placeImportControls()
+            publishButton.text = model.labels().text("settings.publish.action")
+            placeActionControls()
         } finally {
             syncing = false
         }
@@ -167,11 +192,27 @@ class SettingsPanel(
         importNotices.text = lines.joinToString("\n")
     }
 
-    private fun placeImportControls() {
+    private fun showPublishNotices(report: PublishReport) {
+        val labels = model.labels()
+        val lines = mutableListOf<String>()
+        report.publishedRepositories.forEach { lines += PublishMessages.done(labels, it) }
+        if (report.cancelled) lines += PublishMessages.cancelled(labels)
+        report.failure?.let { lines += PublishMessages.failure(labels, it) }
+        if (report.files.isEmpty() && !report.cancelled && report.failure == null) {
+            lines += PublishMessages.nothing(labels)
+        }
+        publishNotices.text = lines.joinToString("\n")
+    }
+
+    private fun placeActionControls() {
         remove(importButton)
         remove(importNotices)
+        remove(publishButton)
+        remove(publishNotices)
         add(importButton)
         add(importNotices)
+        add(publishButton)
+        add(publishNotices)
     }
 
     private fun rebuildComponentChecks() {

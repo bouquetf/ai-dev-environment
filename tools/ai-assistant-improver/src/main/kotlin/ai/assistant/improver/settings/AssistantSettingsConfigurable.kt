@@ -6,12 +6,20 @@ import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.OverwriteConfirmation
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.ProcessGit
+import ai.assistant.improver.publish.PublishConfirmation
+import ai.assistant.improver.publish.PublishFile
 import ai.assistant.improver.repository.SourceRepositories
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import java.nio.file.Path
+import javax.swing.BoxLayout
 import javax.swing.JComponent
+import javax.swing.JLabel
 import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JTextField
 
 class AssistantSettingsConfigurable(
     private val assistantsStore: AssistantStore,
@@ -22,6 +30,8 @@ class AssistantSettingsConfigurable(
     private val confirmOverwrite: OverwriteConfirmation = OverwriteConfirmation { false },
     private val projectRoot: () -> Path = { error("No project directory") },
     private val dialogConfirmation: Boolean = false,
+    private val confirmPublish: PublishConfirmation = PublishConfirmation { null },
+    private val git: GitCommand = ProcessGit,
 ) : Configurable {
     constructor(project: Project) : this(
         ProjectAssistantStore(project),
@@ -65,14 +75,18 @@ class AssistantSettingsConfigurable(
             baseline.repositories,
             baseline.selection,
             snapshotStore.read(),
+            git = git,
         )
         model = created
         val confirm = if (dialogConfirmation) dialogConfirm(created) else confirmOverwrite
+        val publish = if (dialogConfirmation) dialogPublish(created) else confirmPublish
         return SettingsPanel(
             created,
             projectRoot,
             confirm,
             onImported = { snapshotStore.write(it) },
+            publish,
+            onPublished = { snapshotStore.write(it) },
         ).also { panel = it }
     }
 
@@ -84,6 +98,38 @@ class AssistantSettingsConfigurable(
             labels.text("settings.import.confirmTitle"),
             JOptionPane.YES_NO_OPTION,
         ) == JOptionPane.YES_OPTION
+    }
+
+    private fun dialogPublish(model: SettingsViewModel): PublishConfirmation = PublishConfirmation { files ->
+        val labels = model.labels()
+        val message = JTextField(labels.text("settings.publish.defaultMessage"))
+        message.name = "publish.message"
+        val content = JPanel()
+        content.layout = BoxLayout(content, BoxLayout.Y_AXIS)
+        content.add(JLabel(labels.text("settings.publish.intro")))
+        fileLines(files).forEach { content.add(JLabel(it)) }
+        content.add(JLabel(labels.text("settings.publish.message")))
+        content.add(message)
+        val choice = JOptionPane.showConfirmDialog(
+            panel,
+            content,
+            labels.text("settings.publish.confirmTitle"),
+            JOptionPane.YES_NO_OPTION,
+        )
+        if (choice == JOptionPane.YES_OPTION) message.text else null
+    }
+
+    private fun fileLines(files: List<PublishFile>): List<String> {
+        val lines = mutableListOf<String>()
+        var repository: String? = null
+        files.forEach { file ->
+            if (file.repositoryPath != repository) {
+                lines += file.repositoryPath
+                repository = file.repositoryPath
+            }
+            lines += "${file.destinationPath} -> ${file.sourcePath}"
+        }
+        return lines
     }
 
     override fun isModified(): Boolean {

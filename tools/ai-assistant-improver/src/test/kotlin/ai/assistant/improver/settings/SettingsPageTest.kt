@@ -6,11 +6,16 @@ import ai.assistant.improver.assistant.EnabledAssistants
 import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
+import ai.assistant.improver.install.ContentDigest
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.OverwriteConfirmation
 import ai.assistant.improver.install.OverwritePrompt
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.GitOutput
+import ai.assistant.improver.publish.PublishConfirmation
+import ai.assistant.improver.publish.PublishFile
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -493,6 +498,169 @@ class SettingsPageTest {
         assertEquals("local-edit", Files.readString(installed))
         assertEquals("Local changes kept for .cursor/skills/specification-fr.", importPanel.importNotices().text)
         assertEquals(digestBefore, snapshot.value.files().single().sha256)
+    }
+
+    @Test
+    fun `publish button uses the injected confirmation and saves the snapshot`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val seen = mutableListOf<PublishFile>()
+        val git = PageGit()
+        val (publishPage, publishPanel, repo) = importedSkill(tempDir, project, git, PublishConfirmation {
+            seen += it
+            "Publish skill"
+        })
+        val path = repo.toRealPath().toString()
+        publishPanel.modeCombo(path).selectedItem = RepositoryMode.SYNCHRONISATION
+        publishPage.apply()
+        val installed = resolve(project, ".cursor/skills/specification-fr/SKILL.md")
+        Files.writeString(installed, "local-edit")
+        val assistantsBefore = assistants.value
+        val repositoriesBefore = repositories.value
+        val selectionBefore = selection.value
+
+        publishPanel.publishButton().doClick()
+
+        assertEquals("ia/skills/specification-fr/SKILL.md", seen.single().sourcePath)
+        assertEquals(".cursor/skills/specification-fr/SKILL.md", seen.single().destinationPath)
+        val committed = git.calls.first { it.first() == "commit" }
+        assertTrue(committed.containsAll(listOf("commit", "-m", "Publish skill", "ia/skills/specification-fr/SKILL.md")))
+        assertEquals(ContentDigest.sha256(Files.readAllBytes(installed)), snapshot.value.files().single().sha256)
+        assertFalse(publishPage.isModified)
+        assertEquals(assistantsBefore, assistants.value)
+        assertEquals(repositoriesBefore, repositories.value)
+        assertEquals(selectionBefore, selection.value)
+        assertEquals("Published $path.", publishPanel.publishNotices().text)
+    }
+
+    @Test
+    fun `cancel publishes nothing`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val git = PageGit()
+        val (_, publishPanel, repo) = installedForPublish(tempDir, project, git) { null }
+        val skill = resolve(repo, "ia/skills/specification-fr/SKILL.md")
+        val digestBefore = snapshot.value.files().single().sha256
+
+        publishPanel.publishButton().doClick()
+
+        assertTrue(git.calls.isEmpty())
+        assertEquals("specification", Files.readString(skill))
+        assertEquals(digestBefore, snapshot.value.files().single().sha256)
+        assertEquals("Publication cancelled.", publishPanel.publishNotices().text)
+    }
+
+    @Test
+    fun `download only offers nothing to publish`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        var confirmed = false
+        val (_, publishPanel) = importedSkill(tempDir, project, PageGit(), PublishConfirmation {
+            confirmed = true
+            null
+        })
+        Files.writeString(resolve(project, ".cursor/skills/specification-fr/SKILL.md"), "local-edit")
+
+        publishPanel.publishButton().doClick()
+
+        assertFalse(confirmed)
+        assertEquals("No local changes to publish.", publishPanel.publishNotices().text)
+    }
+
+    @Test
+    fun `divergence is shown from the page`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val git = PageGit()
+        val (_, publishPanel, repo) = installedForPublish(tempDir, project, git) { "Publish skill" }
+        val skill = resolve(repo, "ia/skills/specification-fr/SKILL.md")
+        Files.writeString(skill, "upstream")
+        Files.writeString(resolve(project, ".cursor/skills/specification-fr/SKILL.md"), "local-edit")
+
+        publishPanel.publishButton().doClick()
+
+        val path = repo.toRealPath().toString()
+        assertEquals(
+            "The source repository and the local files both changed. Nothing was published for $path.",
+            publishPanel.publishNotices().text,
+        )
+        assertEquals("upstream", Files.readString(skill))
+    }
+
+    @Test
+    fun `french push failure uses the french bundle`(@TempDir tempDir: Path) {
+        val project = Files.createDirectories(tempDir.resolve("project"))
+        val git = PageGit()
+        val (_, publishPanel, repo) = installedForPublish(tempDir, project, git) { "Publish skill" }
+        val digestBefore = snapshot.value.files().single().sha256
+        publishPanel.languageCombo().selectedItem = UiLanguage.FRENCH
+        git.pushCode = 1
+
+        publishPanel.publishButton().doClick()
+
+        val path = repo.toRealPath().toString()
+        assertEquals("Le commit reste en local, sans push, pour $path.", publishPanel.publishNotices().text)
+        assertEquals(digestBefore, snapshot.value.files().single().sha256)
+    }
+
+    @Test
+    fun `publish label follows the language`() {
+        assertEquals("Publish", panel.publishButton().text)
+        panel.languageCombo().selectedItem = UiLanguage.FRENCH
+        assertEquals("Publier", panel.publishButton().text)
+    }
+
+    private fun installedForPublish(
+        tempDir: Path,
+        project: Path,
+        git: PageGit,
+        confirm: (List<PublishFile>) -> String?,
+    ): Triple<AssistantSettingsConfigurable, SettingsPanel, Path> {
+        val opened = importedSkill(tempDir, project, git, PublishConfirmation(confirm))
+        val path = opened.third.toRealPath().toString()
+        opened.second.modeCombo(path).selectedItem = RepositoryMode.SYNCHRONISATION
+        opened.first.apply()
+        Files.writeString(resolve(project, ".cursor/skills/specification-fr/SKILL.md"), "local-edit")
+        return opened
+    }
+
+    private fun importedSkill(
+        tempDir: Path,
+        project: Path,
+        git: GitCommand,
+        confirm: PublishConfirmation,
+    ): Triple<AssistantSettingsConfigurable, SettingsPanel, Path> {
+        val repo = gitDirectory(tempDir, "repo")
+        write(repo, "ia/skills/specification-fr/SKILL.md", "specification")
+        val configurable = AssistantSettingsConfigurable(
+            assistants,
+            language,
+            repositories,
+            selection,
+            snapshot,
+            projectRoot = { project },
+            confirmPublish = confirm,
+            git = git,
+        )
+        val settings = configurable.createComponent() as SettingsPanel
+        settings.assistantChecks().first { it.name == "cursor" }.doClick()
+        addPath(settings, repo)
+        configurable.apply()
+        settings.importButton().doClick()
+        return Triple(configurable, settings, repo)
+    }
+
+    private class PageGit : GitCommand {
+        val calls = mutableListOf<List<String>>()
+        var pushCode: Int = 0
+
+        override fun run(repository: Path, args: List<String>): GitOutput {
+            calls += args
+            return when (args.first()) {
+                "remote" -> GitOutput(0, "url\n")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, " M ia/skills/specification-fr/SKILL.md\n")
+                "add", "commit" -> GitOutput(0, "")
+                "push" -> GitOutput(pushCode, if (pushCode == 0) "" else "rejected\n")
+                else -> error("unexpected git: $args")
+            }
+        }
     }
 
     private fun openImport(

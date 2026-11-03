@@ -61,3 +61,16 @@ For each added repository, the page lists the skills, agents, and rules it finds
 - When the destination differs and the repository is download only, the page asks before overwriting. Cancel leaves the destination and the snapshot unchanged. Confirm overwrites and updates the snapshot.
 - When the destination differs and the repository is in synchronisation, the local files stay, the page says they were kept, and the snapshot is not updated.
 - Import saves the snapshot immediately. It does not replace **Apply** for assistants, language, repositories, or the selection. Removing an assistant, a repository, or a component does not delete files already copied.
+
+## Publish
+
+**Publish** lists installed files whose project copy differs from the snapshot, for repositories in synchronisation only. A download-only repository is skipped.
+
+- The page shows those files and a commit message. The message starts as `Publish local changes` and can be edited. Cancel copies nothing back and creates no commit.
+- Confirm copies the project files to their original paths when those source files still match the snapshot. Only those paths are staged and committed. The current branch is pushed to `origin`.
+- The plugin runs `git` in the source repository. It does not store a token. Git credentials stay those already available to the user.
+- After a successful push, the snapshot matches the published content. Publish saves the snapshot immediately. It does not replace **Apply**.
+- A file already changed in the source repository, and outside the published components, stays out of the commit.
+- If the source file and the project file both changed since the snapshot, and their contents differ, nothing is overwritten and no commit is created. The page reports the divergence.
+- If `origin` is missing, or the repository is not on a branch, nothing is committed and the page reports the error.
+- If the commit succeeds and the push fails, the page states that the commit stays local and was not pushed. Publish does not create a second commit. A later publish pushes that commit once `origin` accepts it.
