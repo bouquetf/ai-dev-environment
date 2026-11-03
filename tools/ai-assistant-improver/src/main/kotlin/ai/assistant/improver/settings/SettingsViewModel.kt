@@ -6,6 +6,7 @@ import ai.assistant.improver.assistant.EnabledAssistants
 import ai.assistant.improver.i18n.Labels
 import ai.assistant.improver.i18n.LanguagePreference
 import ai.assistant.improver.i18n.UiLanguage
+import ai.assistant.improver.repository.SourceRepositories
 
 data class AssistantRow(val id: AssistantId, val label: String, val selected: Boolean)
 
@@ -14,10 +15,12 @@ data class LanguageChoice(val language: UiLanguage, val label: String, val selec
 class SettingsViewModel(
     assistants: EnabledAssistants,
     language: LanguagePreference,
+    repositories: SourceRepositories = SourceRepositories(),
     private val labelsFor: (UiLanguage) -> Labels = { Labels.load(it) },
 ) {
     private var assistants: EnabledAssistants = assistants
     private var language: LanguagePreference = language
+    val repositorySettings: RepositorySettings = RepositorySettings(repositories)
 
     private val labels: Labels
         get() = labelsFor(language.language)
@@ -60,12 +63,17 @@ class SettingsViewModel(
         this.language = this.language.withLanguage(language)
     }
 
-    fun reload(assistants: EnabledAssistants, language: LanguagePreference) {
+    fun labels(): Labels = labels
+
+    fun reload(assistants: EnabledAssistants, language: LanguagePreference, repositories: SourceRepositories) {
         this.assistants = assistants
         this.language = language
+        repositorySettings.replace(repositories)
     }
 
     fun assistants(): EnabledAssistants = assistants
 
     fun language(): LanguagePreference = language
+
+    fun repositories(): SourceRepositories = repositorySettings.current()
 }

@@ -1,14 +1,17 @@
 package ai.assistant.improver.settings
 
 import ai.assistant.improver.i18n.UiLanguage
+import ai.assistant.improver.repository.RepositoryMode
 import java.awt.Component
 import javax.swing.BoxLayout
 import javax.swing.DefaultListCellRenderer
+import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
+import javax.swing.JTextField
 
 class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
     private val assistantsHeading = JLabel()
@@ -16,6 +19,12 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
     private val checks: List<JCheckBox>
     private val combo = JComboBox(UiLanguage.entries.toTypedArray())
     private var syncing = false
+    private val repositorySection = RepositorySettingsSection(
+        settings = model.repositorySettings,
+        labelsOf = { model.labels() },
+        isSyncing = { syncing },
+        requestSync = { syncFromModel() },
+    )
 
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -55,6 +64,7 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
             }
         }
         add(combo)
+        repositorySection.attach(this)
         syncFromModel()
     }
 
@@ -69,6 +79,22 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
     fun languageLabel(language: UiLanguage): String =
         model.languageChoices.first { it.language == language }.label
 
+    fun repositoryHeading(): JLabel = repositorySection.heading()
+
+    fun repositoryPathField(): JTextField = repositorySection.pathField()
+
+    fun addButton(): JButton = repositorySection.addButton()
+
+    fun browseButton(): JButton = repositorySection.browseButton()
+
+    fun repositoryError(): JLabel = repositorySection.error()
+
+    fun repositoryRows(): List<JPanel> = repositorySection.rows()
+
+    fun modeCombo(path: String): JComboBox<RepositoryMode> = repositorySection.modeCombo(path)
+
+    fun removeButton(path: String): JButton = repositorySection.removeButton(path)
+
     fun syncFromModel() {
         syncing = true
         try {
@@ -82,6 +108,7 @@ class SettingsPanel(private val model: SettingsViewModel) : JPanel() {
             }
             combo.selectedItem = model.language().language
             combo.repaint()
+            repositorySection.sync()
         } finally {
             syncing = false
         }
