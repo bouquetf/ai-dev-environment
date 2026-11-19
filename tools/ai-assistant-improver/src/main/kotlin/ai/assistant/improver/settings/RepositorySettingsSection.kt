@@ -54,8 +54,7 @@ class RepositorySettingsSection(
     fun attach(parent: JPanel) {
         browseButton.addActionListener {
             if (!isSyncing()) {
-                val chooser = JFileChooser()
-                chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                val chooser = directoryChooser()
                 if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) {
                     pathField.text = chooser.selectedFile.absolutePath
                 }
@@ -154,5 +153,8 @@ class RepositorySettingsSection(
 
     companion object {
         private const val REPOSITORY_PATH = "repositoryPath"
+
+        internal fun directoryChooser(): JFileChooser =
+            JFileChooser().apply { fileSelectionMode = JFileChooser.DIRECTORIES_ONLY }
     }
 }

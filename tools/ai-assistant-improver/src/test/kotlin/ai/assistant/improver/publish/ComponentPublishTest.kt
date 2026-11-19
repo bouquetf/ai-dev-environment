@@ -5,8 +5,10 @@ import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.install.ContentDigest
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.InstalledFile
+import ai.assistant.improver.repository.CacheDirectories
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
+import ai.assistant.improver.repository.SourceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -338,6 +340,71 @@ class ComponentPublishTest {
             report.snapshot.files().single { it.destinationPath == "two.txt" }.sha256,
         )
         assertEquals("two", read(second.root, "ia/skills/two/SKILL.md"))
+    }
+
+    @Test
+    fun `a url is published from its cache clone without fetching`(@TempDir root: Path) {
+        val cache = root.resolve("cache")
+        val url = "https://plugins.test/repo.git"
+        val clone = CacheDirectories.directory(cache, url)
+        write(clone, "ia/skills/demo/SKILL.md", "original")
+        val localDir = Files.createDirectories(root.resolve("local"))
+        Files.createDirectories(localDir.resolve(".git"))
+        write(localDir, "ia/skills/demo/SKILL.md", "original")
+        val localPath = localDir.toRealPath().toString()
+        val project = Files.createDirectories(root.resolve("project"))
+        write(project, "remote.txt", "edited")
+        write(project, "local.txt", "edited-local")
+        val snapshot = InstallationSnapshot.restore(
+            listOf(
+                installed(url, "ia/skills/demo/SKILL.md", "remote.txt", "original"),
+                installed(localPath, "ia/skills/demo/SKILL.md", "local.txt", "original"),
+            ),
+        )
+        val repositories = SourceRepositories.restore(
+            listOf(
+                SourceRepository(url, RepositoryMode.SYNCHRONISATION),
+                SourceRepository(localPath, RepositoryMode.SYNCHRONISATION),
+            ),
+        )
+        val git = CwdGit()
+
+        val report = ComponentPublish.publish(
+            project,
+            repositories,
+            snapshot,
+            PublishConfirmation { "Publish skill" },
+            git,
+            cache,
+        )
+
+        assertNull(report.failure)
+        assertEquals(listOf(url, localPath), report.publishedRepositories)
+        assertEquals(setOf(url, localPath), report.snapshot.files().map { it.repositoryPath }.toSet())
+        assertEquals("edited", read(clone, "ia/skills/demo/SKILL.md"))
+        assertEquals("edited-local", read(localDir, "ia/skills/demo/SKILL.md"))
+        val remoteCalls = git.calls.filter { it.first.normalize() == clone.normalize() }
+        val localCalls = git.calls.filter { it.first.normalize() == Path.of(localPath).normalize() }
+        assertTrue(remoteCalls.isNotEmpty())
+        assertTrue(localCalls.isNotEmpty())
+        assertTrue(git.calls.none { it.second.first() in setOf("fetch", "clone", "reset", "pull") })
+        assertTrue(remoteCalls.any { it.second == listOf("push", "origin", "main") })
+        assertEquals(listOf(clone.fileName.toString()), Files.list(cache).use { stream -> stream.map { it.fileName.toString() }.toList() })
+    }
+
+    private class CwdGit : GitCommand {
+        val calls = mutableListOf<Pair<Path, List<String>>>()
+
+        override fun run(repository: Path, args: List<String>): GitOutput {
+            calls += repository to args
+            return when (args.first()) {
+                "remote" -> GitOutput(0, "url\n")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, " M ia/skills/demo/SKILL.md\n")
+                "add", "commit", "push" -> GitOutput(0, "")
+                else -> error("unexpected git: $args")
+            }
+        }
     }
 
     private data class PreparedRepository(val root: Path, val path: String, val repositories: SourceRepositories)

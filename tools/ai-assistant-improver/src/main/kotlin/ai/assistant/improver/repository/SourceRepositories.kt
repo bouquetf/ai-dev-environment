@@ -1,5 +1,7 @@
 package ai.assistant.improver.repository
 
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.ProcessGit
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.IOException
@@ -14,11 +16,46 @@ class SourceRepositories private constructor(private val stored: List<SourceRepo
 
     fun entries(): List<SourceRepository> = stored.toList()
 
-    fun add(rawPath: String): SourceRepositories {
+    fun add(
+        rawPath: String,
+        cacheRoot: Path? = null,
+        git: GitCommand = ProcessGit,
+    ): SourceRepositories {
         val trimmed = rawPath.trim()
         if (trimmed.isEmpty()) {
             throw RepositoryRejectedException(RepositoryRejectedException.Reason.EMPTY, trimmed)
         }
+        return when (val parsed = RepositoryAddress.parse(trimmed)) {
+            is RepositoryAddress.Parsed.Remote -> addRemote(trimmed, parsed.url, cacheRoot, git)
+            RepositoryAddress.Parsed.Invalid ->
+                throw RepositoryRejectedException(RepositoryRejectedException.Reason.INVALID_URL, trimmed)
+            is RepositoryAddress.Parsed.Local -> addLocal(trimmed)
+        }
+    }
+
+    private fun addRemote(
+        trimmed: String,
+        url: String,
+        cacheRoot: Path?,
+        git: GitCommand,
+    ): SourceRepositories {
+        if (stored.any { it.path == url }) {
+            throw RepositoryRejectedException(RepositoryRejectedException.Reason.DUPLICATE, trimmed)
+        }
+        if (cacheRoot == null) {
+            throw RepositoryRejectedException(RepositoryRejectedException.Reason.CLONE_FAILED, url)
+        }
+        Files.createDirectories(cacheRoot)
+        val destination = CacheDirectories.directory(cacheRoot, url)
+        val cloned = git.run(cacheRoot, listOf("clone", "--", url, destination.toString()))
+        if (cloned.exitCode != 0) {
+            CacheDirectories.deleteIfPresent(cacheRoot, url)
+            throw RepositoryRejectedException(RepositoryRejectedException.Reason.CLONE_FAILED, url)
+        }
+        return SourceRepositories(stored + SourceRepository(url, RepositoryMode.DOWNLOAD_ONLY))
+    }
+
+    private fun addLocal(trimmed: String): SourceRepositories {
         val candidate = try {
             Path.of(trimmed)
         } catch (_: InvalidPathException) {
@@ -45,9 +82,13 @@ class SourceRepositories private constructor(private val stored: List<SourceRepo
         return SourceRepositories(updated)
     }
 
-    fun remove(path: String): SourceRepositories {
+    fun remove(path: String, cacheRoot: Path? = null): SourceRepositories {
         val index = indexOf(path)
         if (index < 0) return SourceRepositories(stored.toList())
+        val removed = stored[index]
+        if (cacheRoot != null && RepositoryAddress.parse(removed.path) is RepositoryAddress.Parsed.Remote) {
+            CacheDirectories.deleteIfPresent(cacheRoot, removed.path)
+        }
         return SourceRepositories(stored.filterIndexed { i, _ -> i != index })
     }
 
@@ -68,7 +109,7 @@ class SourceRepositories private constructor(private val stored: List<SourceRepo
 
     private fun indexOf(path: String): Int {
         val direct = stored.indexOfFirst { it.path == path }
-        if (direct >= 0) return direct
+        if (direct >= 0 || path.contains("://")) return direct
         val canonical = canonicalIfExists(path) ?: return -1
         return stored.indexOfFirst { it.path == canonical }
     }

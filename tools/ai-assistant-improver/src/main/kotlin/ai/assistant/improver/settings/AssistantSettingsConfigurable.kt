@@ -21,6 +21,8 @@ import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JTextField
 
+internal const val SOURCE_CACHE_DIRECTORY = "ai-assistant-improver/sources"
+
 class AssistantSettingsConfigurable(
     private val assistantsStore: AssistantStore,
     private val languageStore: LanguageStore,
@@ -32,6 +34,7 @@ class AssistantSettingsConfigurable(
     private val dialogConfirmation: Boolean = false,
     private val confirmPublish: PublishConfirmation = PublishConfirmation { null },
     private val git: GitCommand = ProcessGit,
+    private val cacheRoot: () -> Path? = { null },
 ) : Configurable {
     constructor(project: Project) : this(
         ProjectAssistantStore(project),
@@ -41,6 +44,7 @@ class AssistantSettingsConfigurable(
         ProjectInstallationSnapshotStore(project),
         projectRoot = { Path.of(requireNotNull(project.basePath) { "Project has no base path" }) },
         dialogConfirmation = true,
+        cacheRoot = { ProjectSourceCache.path(project, SOURCE_CACHE_DIRECTORY) },
     )
 
     private class Baseline(
@@ -76,6 +80,7 @@ class AssistantSettingsConfigurable(
             baseline.selection,
             snapshotStore.read(),
             git = git,
+            cacheRoot = cacheRoot,
         )
         model = created
         val confirm = if (dialogConfirmation) dialogConfirm(created) else confirmOverwrite

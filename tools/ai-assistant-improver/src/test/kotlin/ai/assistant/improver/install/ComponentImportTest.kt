@@ -7,6 +7,11 @@ import ai.assistant.improver.component.ComponentDiscovery
 import ai.assistant.improver.component.ComponentId
 import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.component.ComponentSelection
+import ai.assistant.improver.publish.ComponentPublish
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.GitOutput
+import ai.assistant.improver.publish.PublishConfirmation
+import ai.assistant.improver.repository.CacheDirectories
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import ai.assistant.improver.repository.SourceRepository
@@ -357,6 +362,226 @@ class ComponentImportTest {
         assertEquals(ContentDigest.sha256("from-cursor".toByteArray(Charsets.UTF_8)), entry.sha256)
     }
 
+    @Test
+    fun `a clean url clone is fast forwarded before import`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val clone = prepareClone(cache, url, "remote")
+        val seen = mutableListOf<Path>()
+        val git = remoteGit { _, args ->
+            when (args.first()) {
+                "fetch" -> GitOutput(0, "")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, "")
+                "rev-list" -> GitOutput(0, "0\n")
+                "merge-base" -> GitOutput(0, "")
+                "reset" -> GitOutput(0, "")
+                else -> error("unexpected git: $args")
+            }
+        }
+
+        val report = importUrl(url, cache, project, git) { path ->
+            seen.add(path)
+            ComponentDiscovery.discover(path)
+        }
+
+        assertTrue(report.notices.isEmpty())
+        assertEquals(
+            listOf("fetch", "rev-parse", "status", "rev-list", "merge-base", "reset"),
+            git.calls.map { it.second.first() },
+        )
+        assertEquals(listOf("reset", "--hard", "origin/main"), git.calls.last().second)
+        assertEquals(clone.normalize(), seen.single().normalize())
+        assertEquals(url, report.snapshot.files().single().repositoryPath)
+        assertEquals("remote", read(project, ".cursor/skills/demo/SKILL.md"))
+    }
+
+    @Test
+    fun `a dirty tree or local commits or a diverged branch is kept`(@TempDir temp: Path) {
+        listOf(" M ia/skills/demo/SKILL.md\n", "", "").forEachIndexed { index, status ->
+            val cache = temp.resolve("cache-$index")
+            val project = temp.resolve("project-$index")
+            val url = "https://plugins.test/repo.git"
+            val clone = prepareClone(cache, url, "current")
+            val note = Files.writeString(clone.resolve("NOTE.txt"), "keep")
+            val git = remoteGit { _, args ->
+                when (args.first()) {
+                    "fetch" -> GitOutput(0, "")
+                    "rev-parse" -> GitOutput(0, "main\n")
+                    "status" -> GitOutput(0, status)
+                    "rev-list" -> GitOutput(0, if (index == 1) "1\n" else "0\n")
+                    "merge-base" -> GitOutput(if (index == 2) 1 else 0, "")
+                    else -> error("unexpected git: $args")
+                }
+            }
+
+            val report = importUrl(url, cache, project, git)
+
+            assertTrue(git.calls.none { it.second.first() == "reset" })
+            assertEquals("keep", Files.readString(note))
+            assertEquals(ImportNoticeKind.KEPT_TREE, report.notices.single().kind)
+            assertEquals("current", read(project, ".cursor/skills/demo/SKILL.md"))
+        }
+    }
+
+    @Test
+    fun `a detached clone is kept without counting commits`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        prepareClone(cache, url, "detached")
+        val git = remoteGit { _, args ->
+            when (args.first()) {
+                "fetch" -> GitOutput(0, "")
+                "rev-parse" -> GitOutput(0, "HEAD\n")
+                else -> error("unexpected git: $args")
+            }
+        }
+
+        val report = importUrl(url, cache, project, git)
+
+        assertEquals(listOf("fetch", "rev-parse"), git.calls.map { it.second.first() })
+        assertEquals(ImportNoticeKind.KEPT_TREE, report.notices.single().kind)
+        assertEquals("detached", read(project, ".cursor/skills/demo/SKILL.md"))
+    }
+
+    @Test
+    fun `a failed fetch imports the current tree and keeps the clone`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val clone = prepareClone(cache, url, "current")
+        val git = remoteGit { _, args ->
+            if (args.first() == "fetch") GitOutput(1, "failed") else error("unexpected git: $args")
+        }
+
+        val report = importUrl(url, cache, project, git)
+
+        assertEquals(listOf("fetch"), git.calls.map { it.second.first() })
+        assertEquals(ImportNotice(url, ImportNoticeKind.FETCH_FAILED), report.notices.single())
+        assertEquals("current", read(project, ".cursor/skills/demo/SKILL.md"))
+        assertTrue(Files.isDirectory(clone))
+    }
+
+    @Test
+    fun `a failed reclone skips that url and still imports a local repository`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val destination = CacheDirectories.directory(cache, url)
+        val local = temp.resolve("local")
+        write(local, "ia/skills/local-skill/SKILL.md", "local")
+        val git = remoteGit { _, args ->
+            Files.createDirectories(Path.of(args.last()).resolve("partial"))
+            GitOutput(1, "failed")
+        }
+        val repositories = SourceRepositories.restore(
+            listOf(
+                SourceRepository(url, RepositoryMode.DOWNLOAD_ONLY),
+                SourceRepository(local.toString(), RepositoryMode.DOWNLOAD_ONLY),
+            ),
+        )
+
+        val report = ComponentImport.import(
+            project,
+            repositories,
+            ComponentSelection(),
+            assistants(AssistantId.CURSOR),
+            InstallationSnapshot(),
+            OverwriteConfirmation { error("unexpected confirmation") },
+            cacheRoot = cache,
+            git = git,
+        )
+
+        assertEquals(listOf(listOf("clone", "--", url, destination.toString())), git.calls.map { it.second })
+        assertEquals(cache.normalize(), git.calls.single().first.normalize())
+        assertEquals(ImportNotice(url, ImportNoticeKind.CLONE_FAILED), report.notices.single())
+        assertFalse(Files.exists(destination))
+        assertEquals("local", read(project, ".cursor/skills/local-skill/SKILL.md"))
+        assertTrue(report.snapshot.files().all { it.repositoryPath == local.toString() })
+    }
+
+    @Test
+    fun `a missing clone is recreated before fetch`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val destination = CacheDirectories.directory(cache, url)
+        val git = remoteGit { _, args ->
+            when (args.first()) {
+                "clone" -> {
+                    write(Path.of(args.last()), "ia/skills/demo/SKILL.md", "cloned")
+                    GitOutput(0, "")
+                }
+                "fetch" -> GitOutput(0, "")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, "")
+                "rev-list" -> GitOutput(0, "0\n")
+                "merge-base" -> GitOutput(0, "")
+                "reset" -> GitOutput(0, "")
+                else -> error("unexpected git: $args")
+            }
+        }
+
+        val report = importUrl(url, cache, project, git)
+
+        assertEquals(listOf("clone", "--", url, destination.toString()), git.calls.first().second)
+        assertEquals(cache.normalize(), git.calls.first().first.normalize())
+        assertEquals("fetch", git.calls[1].second.first())
+        assertEquals(destination.normalize(), git.calls[1].first.normalize())
+        assertEquals("cloned", read(project, ".cursor/skills/demo/SKILL.md"))
+        assertTrue(report.notices.isEmpty())
+    }
+
+    @Test
+    fun `an unpushed publish is not erased by the next import`(@TempDir temp: Path) {
+        val cache = temp.resolve("cache")
+        val project = temp.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val clone = prepareClone(cache, url, "original")
+        val imported = importUrl(url, cache, project, fastForwardGit())
+        write(project, ".cursor/skills/demo/SKILL.md", "local-edit")
+        val publishGit = remoteGit { _, args ->
+            when (args.first()) {
+                "remote" -> GitOutput(0, "url\n")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, " M ia/skills/demo/SKILL.md\n")
+                "add", "commit", "push" -> GitOutput(0, "")
+                else -> error("unexpected git: $args")
+            }
+        }
+        val repositories = SourceRepositories.restore(
+            listOf(SourceRepository(url, RepositoryMode.SYNCHRONISATION)),
+        )
+        ComponentPublish.publish(
+            project,
+            repositories,
+            imported.snapshot,
+            PublishConfirmation { "Publish skill" },
+            publishGit,
+            cache,
+        )
+        assertTrue(publishGit.calls.none { it.second.first() == "fetch" })
+        val note = Files.writeString(clone.resolve("NOTE.txt"), "keep")
+        val importGit = remoteGit { _, args ->
+            when (args.first()) {
+                "fetch" -> GitOutput(0, "")
+                "rev-parse" -> GitOutput(0, "main\n")
+                "status" -> GitOutput(0, "")
+                "rev-list" -> GitOutput(0, "1\n")
+                "merge-base" -> GitOutput(0, "")
+                else -> error("unexpected git: $args")
+            }
+        }
+
+        val again = importUrl(url, cache, project, importGit, repositories = repositories, snapshot = imported.snapshot)
+
+        assertTrue(importGit.calls.none { it.second.first() == "reset" })
+        assertEquals("keep", Files.readString(note))
+        assertEquals(ImportNoticeKind.KEPT_TREE, again.notices.single().kind)
+    }
+
     private fun import(
         source: Path,
         project: Path,
@@ -391,4 +616,55 @@ class ComponentImportTest {
 
     private fun resolve(root: Path, relative: String): Path =
         relative.split('/').fold(root) { parent, name -> parent.resolve(name) }
+
+    private fun importUrl(
+        url: String,
+        cache: Path,
+        project: Path,
+        git: GitCommand,
+        repositories: SourceRepositories = SourceRepositories.restore(
+            listOf(SourceRepository(url, RepositoryMode.DOWNLOAD_ONLY)),
+        ),
+        snapshot: InstallationSnapshot = InstallationSnapshot(),
+        discover: (Path) -> List<ComponentId> = ComponentDiscovery::discover,
+    ): ImportReport = ComponentImport.import(
+        project,
+        repositories,
+        ComponentSelection(),
+        assistants(AssistantId.CURSOR),
+        snapshot,
+        OverwriteConfirmation { error("unexpected confirmation") },
+        discover,
+        cache,
+        git,
+    )
+
+    private fun prepareClone(cache: Path, url: String, content: String): Path {
+        val clone = CacheDirectories.directory(cache, url)
+        write(clone, "ia/skills/demo/SKILL.md", content)
+        return clone
+    }
+
+    private fun fastForwardGit(): RemoteGit = remoteGit { _, args ->
+        when (args.first()) {
+            "fetch" -> GitOutput(0, "")
+            "rev-parse" -> GitOutput(0, "main\n")
+            "status" -> GitOutput(0, "")
+            "rev-list" -> GitOutput(0, "0\n")
+            "merge-base" -> GitOutput(0, "")
+            "reset" -> GitOutput(0, "")
+            else -> error("unexpected git: $args")
+        }
+    }
+
+    private fun remoteGit(responder: (Path, List<String>) -> GitOutput): RemoteGit = RemoteGit(responder)
+
+    private class RemoteGit(private val responder: (Path, List<String>) -> GitOutput) : GitCommand {
+        val calls = mutableListOf<Pair<Path, List<String>>>()
+
+        override fun run(repository: Path, args: List<String>): GitOutput {
+            calls += repository to args
+            return responder(repository, args)
+        }
+    }
 }

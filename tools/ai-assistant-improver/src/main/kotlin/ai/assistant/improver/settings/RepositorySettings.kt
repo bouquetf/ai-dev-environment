@@ -1,13 +1,20 @@
 package ai.assistant.improver.settings
 
 import ai.assistant.improver.i18n.Labels
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.ProcessGit
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.RepositoryRejectedException
 import ai.assistant.improver.repository.SourceRepositories
+import java.nio.file.Path
 
 data class RepositoryRow(val path: String, val mode: RepositoryMode, val modeLabel: String)
 
-class RepositorySettings(repositories: SourceRepositories = SourceRepositories()) {
+class RepositorySettings(
+    repositories: SourceRepositories = SourceRepositories(),
+    private val cacheRoot: () -> Path? = { null },
+    private val git: GitCommand = ProcessGit,
+) {
     private var repositories: SourceRepositories = repositories
     private var rejection: RepositoryRejectedException? = null
 
@@ -43,7 +50,7 @@ class RepositorySettings(repositories: SourceRepositories = SourceRepositories()
 
     fun add(rawPath: String) {
         try {
-            repositories = repositories.add(rawPath)
+            repositories = repositories.add(rawPath, cacheRoot(), git)
             rejection = null
         } catch (error: RepositoryRejectedException) {
             rejection = error
@@ -56,7 +63,7 @@ class RepositorySettings(repositories: SourceRepositories = SourceRepositories()
     }
 
     fun remove(path: String) {
-        repositories = repositories.remove(path)
+        repositories = repositories.remove(path, cacheRoot())
         rejection = null
     }
 }

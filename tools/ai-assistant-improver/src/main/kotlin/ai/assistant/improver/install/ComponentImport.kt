@@ -5,6 +5,10 @@ import ai.assistant.improver.assistant.EnabledAssistants
 import ai.assistant.improver.component.ComponentDiscovery
 import ai.assistant.improver.component.ComponentId
 import ai.assistant.improver.component.ComponentSelection
+import ai.assistant.improver.publish.GitCommand
+import ai.assistant.improver.publish.ProcessGit
+import ai.assistant.improver.repository.CacheDirectories
+import ai.assistant.improver.repository.RepositoryAddress
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import java.io.IOException
@@ -36,9 +40,14 @@ data class ImportDestination(
     val action: ImportAction,
 )
 
+enum class ImportNoticeKind { CLONE_FAILED, FETCH_FAILED, KEPT_TREE }
+
+data class ImportNotice(val repositoryPath: String, val kind: ImportNoticeKind)
+
 data class ImportReport(
     val snapshot: InstallationSnapshot,
     val destinations: List<ImportDestination>,
+    val notices: List<ImportNotice> = emptyList(),
 )
 
 object ComponentImport {
@@ -50,27 +59,80 @@ object ComponentImport {
         snapshot: InstallationSnapshot,
         confirm: OverwriteConfirmation,
         discover: (Path) -> List<ComponentId> = ComponentDiscovery::discover,
+        cacheRoot: Path? = null,
+        git: GitCommand = ProcessGit,
     ): ImportReport {
         val files = snapshot.files().toMutableList()
         val destinations = mutableListOf<ImportDestination>()
+        val notices = mutableListOf<ImportNotice>()
         repositories.entries().forEach { repository ->
-            val work = ImportWork(
-                projectRoot,
-                repository.path,
-                Path.of(repository.path),
-                repository.mode,
-                confirm,
-                files,
-            )
-            val selected = selection.components(repository.path, discover(work.repositoryRoot))
-                .filter { it.selected }
-            selected.forEach { component ->
-                assistants.enabledIds().forEach { assistant ->
-                    destinations += importTarget(work, component.id, assistant)
+            when (val refreshed = refresh(repository.path, cacheRoot, git)) {
+                is Refresh.Skip -> notices += refreshed.notice
+                is Refresh.Ready -> {
+                    notices += refreshed.notices
+                    val work = ImportWork(
+                        projectRoot,
+                        repository.path,
+                        refreshed.root,
+                        repository.mode,
+                        confirm,
+                        files,
+                    )
+                    val selected = selection.components(repository.path, discover(work.repositoryRoot))
+                        .filter { it.selected }
+                    selected.forEach { component ->
+                        assistants.enabledIds().forEach { assistant ->
+                            destinations += importTarget(work, component.id, assistant)
+                        }
+                    }
                 }
             }
         }
-        return ImportReport(InstallationSnapshot.restore(files), destinations)
+        return ImportReport(InstallationSnapshot.restore(files), destinations, notices)
+    }
+
+    private sealed interface Refresh {
+        class Ready(val root: Path, val notices: List<ImportNotice>) : Refresh
+        class Skip(val notice: ImportNotice) : Refresh
+    }
+
+    private fun refresh(storedPath: String, cacheRoot: Path?, git: GitCommand): Refresh {
+        val parsed = RepositoryAddress.parse(storedPath)
+        if (parsed !is RepositoryAddress.Parsed.Remote) {
+            return Refresh.Ready(Path.of(storedPath), emptyList())
+        }
+        val cache = requireNotNull(cacheRoot)
+        val root = CacheDirectories.directory(cache, parsed.url)
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectories(cache)
+            val cloned = git.run(cache, listOf("clone", "--", parsed.url, root.toString()))
+            if (cloned.exitCode != 0) {
+                CacheDirectories.deleteIfPresent(cache, parsed.url)
+                return Refresh.Skip(ImportNotice(parsed.url, ImportNoticeKind.CLONE_FAILED))
+            }
+        }
+        val fetched = git.run(root, listOf("fetch", "origin"))
+        if (fetched.exitCode != 0) {
+            return Refresh.Ready(root, listOf(ImportNotice(parsed.url, ImportNoticeKind.FETCH_FAILED)))
+        }
+        val branch = git.run(root, listOf("rev-parse", "--abbrev-ref", "HEAD"))
+        val name = branch.output.trim()
+        if (branch.exitCode != 0 || name.isEmpty() || name == "HEAD") {
+            return Refresh.Ready(root, listOf(ImportNotice(parsed.url, ImportNoticeKind.KEPT_TREE)))
+        }
+        val status = git.run(root, listOf("status", "--porcelain"))
+        val ahead = git.run(root, listOf("rev-list", "--count", "origin/$name..HEAD"))
+        val ancestor = git.run(root, listOf("merge-base", "--is-ancestor", "HEAD", "origin/$name"))
+        val fastForward = status.exitCode == 0 &&
+            status.output.isBlank() &&
+            ahead.exitCode == 0 &&
+            ahead.output.trim() == "0" &&
+            ancestor.exitCode == 0
+        if (!fastForward) {
+            return Refresh.Ready(root, listOf(ImportNotice(parsed.url, ImportNoticeKind.KEPT_TREE)))
+        }
+        git.run(root, listOf("reset", "--hard", "origin/$name"))
+        return Refresh.Ready(root, emptyList())
     }
 
     private class ImportWork(

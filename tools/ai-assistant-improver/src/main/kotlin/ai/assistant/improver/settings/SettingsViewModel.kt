@@ -18,6 +18,7 @@ import ai.assistant.improver.publish.GitCommand
 import ai.assistant.improver.publish.ProcessGit
 import ai.assistant.improver.publish.PublishConfirmation
 import ai.assistant.improver.publish.PublishReport
+import ai.assistant.improver.repository.CacheDirectories
 import ai.assistant.improver.repository.SourceRepositories
 import java.nio.file.Path
 
@@ -41,12 +42,13 @@ class SettingsViewModel(
     private val discover: (Path) -> List<ComponentId> = { ComponentDiscovery.discover(it) },
     private val labelsFor: (UiLanguage) -> Labels = { Labels.load(it) },
     private val git: GitCommand = ProcessGit,
+    private val cacheRoot: () -> Path? = { null },
 ) {
     private var assistants: EnabledAssistants = assistants
     private var language: LanguagePreference = language
     private var selection: ComponentSelection = selection
     private var snapshot: InstallationSnapshot = snapshot
-    val repositorySettings: RepositorySettings = RepositorySettings(repositories)
+    val repositorySettings: RepositorySettings = RepositorySettings(repositories, cacheRoot, git)
 
     private val labels: Labels
         get() = labelsFor(language.language)
@@ -93,7 +95,7 @@ class SettingsViewModel(
         get() {
             val current = labels
             return repositorySettings.current().entries().flatMap { repository ->
-                val discovered = discover(Path.of(repository.path))
+                val discovered = discover(CacheDirectories.workTree(repository.path, cacheRoot()))
                 selection.components(repository.path, discovered).map { component ->
                     val kindLabel = current.text("settings.components.${component.id.kind.wire}")
                     ComponentRow(
@@ -121,13 +123,15 @@ class SettingsViewModel(
             snapshot,
             confirm,
             discover,
+            cacheRoot(),
+            git,
         )
         snapshot = report.snapshot
         return report
     }
 
     fun publishSelected(projectRoot: Path, confirm: PublishConfirmation): PublishReport {
-        val report = ComponentPublish.publish(projectRoot, repositories(), snapshot, confirm, git)
+        val report = ComponentPublish.publish(projectRoot, repositories(), snapshot, confirm, git, cacheRoot())
         snapshot = report.snapshot
         return report
     }

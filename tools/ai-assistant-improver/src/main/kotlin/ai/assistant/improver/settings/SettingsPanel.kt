@@ -9,6 +9,7 @@ import ai.assistant.improver.publish.PublishConfirmation
 import ai.assistant.improver.publish.PublishReport
 import ai.assistant.improver.repository.RepositoryMode
 import java.awt.Component
+import java.awt.Dimension
 import java.nio.file.Path
 import javax.swing.BoxLayout
 import javax.swing.DefaultListCellRenderer
@@ -30,6 +31,11 @@ class SettingsPanel(
 ) : JPanel() {
     private val assistantsHeading = JLabel()
     private val languageHeading = JLabel()
+    private val languageRow = JPanel().apply {
+        name = "language.row"
+        layout = BoxLayout(this, BoxLayout.X_AXIS)
+        alignmentX = Component.LEFT_ALIGNMENT
+    }
     private val checks: List<JCheckBox>
     private val combo = JComboBox(UiLanguage.entries.toTypedArray())
     private var syncing = false
@@ -89,7 +95,6 @@ class SettingsPanel(
             }
         }
         checks.forEach { add(it) }
-        add(languageHeading)
         combo.alignmentX = Component.LEFT_ALIGNMENT
         combo.renderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
@@ -110,7 +115,9 @@ class SettingsPanel(
                 syncFromModel()
             }
         }
-        add(combo)
+        languageRow.add(languageHeading)
+        languageRow.add(combo)
+        add(languageRow)
         repositorySection.attach(this)
         syncFromModel()
     }
@@ -164,7 +171,16 @@ class SettingsPanel(
                 check.text = row.label
                 check.isSelected = row.selected
             }
+            combo.prototypeDisplayValue = model.language().language
             combo.selectedItem = model.language().language
+            combo.setPreferredSize(null)
+            combo.setMaximumSize(null)
+            val width = combo.preferredSize.width
+            val height = languageHeading.preferredSize.height
+            val compact = Dimension(width, height)
+            combo.preferredSize = Dimension(compact)
+            combo.maximumSize = Dimension(compact)
+            languageRow.invalidate()
             combo.repaint()
             repositorySection.sync()
             rebuildComponentChecks()
@@ -188,7 +204,7 @@ class SettingsPanel(
                 ImportAction.KEPT -> ImportMessages.kept(labels, requireNotNull(destination.destinationPath))
                 ImportAction.COPIED, ImportAction.REFUSED -> null
             }
-        }
+        } + report.notices.map { ImportMessages.notice(labels, it) }
         importNotices.text = lines.joinToString("\n")
     }
 

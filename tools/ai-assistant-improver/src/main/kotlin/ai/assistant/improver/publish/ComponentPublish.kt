@@ -4,6 +4,7 @@ import ai.assistant.improver.component.ComponentId
 import ai.assistant.improver.install.ContentDigest
 import ai.assistant.improver.install.InstallationSnapshot
 import ai.assistant.improver.install.InstalledFile
+import ai.assistant.improver.repository.CacheDirectories
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
 import java.io.IOException
@@ -48,6 +49,7 @@ object ComponentPublish {
         snapshot: InstallationSnapshot,
         confirm: PublishConfirmation,
         git: GitCommand = ProcessGit,
+        cacheRoot: Path? = null,
     ): PublishReport {
         val files = candidates(projectRoot, repositories, snapshot)
         if (files.isEmpty()) {
@@ -69,7 +71,7 @@ object ComponentPublish {
         var current = snapshot
         val published = mutableListOf<String>()
         files.groupBy { it.repositoryPath }.forEach { (repositoryPath, _) ->
-            when (val result = publishRepository(projectRoot, repositoryPath, current, message, git)) {
+            when (val result = publishRepository(projectRoot, repositoryPath, current, message, git, cacheRoot)) {
                 is RepoResult.Published -> {
                     current = result.snapshot
                     published += repositoryPath
@@ -107,8 +109,9 @@ object ComponentPublish {
         snapshot: InstallationSnapshot,
         message: String,
         git: GitCommand,
+        cacheRoot: Path?,
     ): RepoResult {
-        val repositoryRoot = Path.of(repositoryPath)
+        val repositoryRoot = CacheDirectories.workTree(repositoryPath, cacheRoot)
         val branch = when (val lookup = lookupBranch(repositoryRoot, repositoryPath, git)) {
             is BranchLookup.Stop -> return lookup.result
             is BranchLookup.Ready -> lookup.name
@@ -120,7 +123,7 @@ object ComponentPublish {
             is PlanLookup.Ready -> planned.plans
         }
         writeCopies(repositoryRoot, plans)
-        commitAndPush(git, plans.map { it.sourcePath }, message, branch, repositoryPath)?.let { return it }
+        commitAndPush(git, plans.map { it.sourcePath }, message, branch, repositoryPath, repositoryRoot)?.let { return it }
         return RepoResult.Published(withPublishedDigests(projectRoot, repositoryPath, snapshot, changed))
     }
 
@@ -189,8 +192,8 @@ object ComponentPublish {
         message: String,
         branch: String,
         repositoryPath: String,
+        repositoryRoot: Path,
     ): RepoResult.Rejected? {
-        val repositoryRoot = Path.of(repositoryPath)
         val status = git.run(repositoryRoot, listOf("status", "--porcelain", "--") + paths)
         if (status.exitCode != 0) {
             return RepoResult.Rejected(PublishFailure(PublishFailureStatus.COMMIT_FAILED, repositoryPath))

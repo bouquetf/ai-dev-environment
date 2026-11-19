@@ -3,6 +3,7 @@ package ai.assistant.improver.settings
 import ai.assistant.improver.assistant.AssistantCatalog
 import ai.assistant.improver.assistant.AssistantId
 import ai.assistant.improver.assistant.EnabledAssistants
+import ai.assistant.improver.component.ComponentDiscovery
 import ai.assistant.improver.component.ComponentKind
 import ai.assistant.improver.component.ComponentSelection
 import ai.assistant.improver.i18n.Labels
@@ -16,19 +17,27 @@ import ai.assistant.improver.publish.GitCommand
 import ai.assistant.improver.publish.GitOutput
 import ai.assistant.improver.publish.PublishConfirmation
 import ai.assistant.improver.publish.PublishFile
+import ai.assistant.improver.repository.CacheDirectories
 import ai.assistant.improver.repository.RepositoryMode
 import ai.assistant.improver.repository.SourceRepositories
+import ai.assistant.improver.repository.SourceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.awt.Component
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.swing.BoxLayout
+import javax.swing.DefaultListCellRenderer
+import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
@@ -139,6 +148,71 @@ class SettingsPageTest {
     }
 
     @Test
+    fun `language label and combo share a compact left aligned row`() {
+        val heading = panel.languageHeading()
+        val combo = panel.languageCombo()
+        val languageRow = heading.parent as JPanel
+        assertSame(languageRow, combo.parent)
+        assertEquals("language.row", languageRow.name)
+        assertNotSame(panel, languageRow)
+        assertSame(panel, languageRow.parent)
+        assertTrue(languageRow.layout is BoxLayout)
+        assertEquals(Component.LEFT_ALIGNMENT, languageRow.alignmentX)
+
+        assertEquals(UiLanguage.ENGLISH, combo.prototypeDisplayValue)
+        val englishWidth = languageProbeWidth(combo, UiLanguage.ENGLISH)
+        assertEquals(englishWidth, combo.preferredSize.width)
+        assertEquals(combo.preferredSize.width, combo.maximumSize.width)
+        assertEquals(heading.preferredSize.height, combo.preferredSize.height)
+        val languageWord = fixedTextProbeWidth(combo, "Language")
+        if (languageWord != englishWidth) {
+            assertNotEquals(languageWord, combo.preferredSize.width)
+        }
+
+        layoutWide(languageRow)
+        assertEquals(heading.y, combo.y)
+        assertEquals(0, heading.x)
+        assertEquals(heading.x + heading.width, combo.x)
+        assertEquals(combo.preferredSize.width, combo.width)
+        assertTrue(combo.x + combo.width < languageRow.width)
+
+        val widthBeforeFrench = combo.preferredSize.width
+        combo.selectedItem = UiLanguage.FRENCH
+        assertEquals("Langue", heading.text)
+        assertSame(languageRow, heading.parent)
+        assertSame(languageRow, combo.parent)
+        assertEquals(UiLanguage.FRENCH, combo.prototypeDisplayValue)
+        val frenchWidth = languageProbeWidth(combo, UiLanguage.FRENCH)
+        assertEquals(frenchWidth, combo.preferredSize.width)
+        assertEquals(combo.preferredSize.width, combo.maximumSize.width)
+        assertEquals(heading.preferredSize.height, combo.preferredSize.height)
+        if (englishWidth != frenchWidth) {
+            assertNotEquals(widthBeforeFrench, combo.preferredSize.width)
+        }
+        val langueWord = fixedTextProbeWidth(combo, "Langue")
+        if (langueWord != frenchWidth) {
+            assertNotEquals(langueWord, combo.preferredSize.width)
+        }
+
+        layoutWide(languageRow)
+        assertEquals(combo.preferredSize.width, combo.width)
+    }
+
+    @Test
+    fun `repository mode lists stay unconstrained`(@TempDir tempDir: Path) {
+        val repo = gitDirectory(tempDir, "repo")
+        addPath(repo)
+        val path = repo.toRealPath().toString()
+        val modeCombo = panel.modeCombo(path)
+        assertFalse(modeCombo.isMaximumSizeSet)
+        val modeParent = modeCombo.parent
+        assertNotEquals("language.row", modeParent.name)
+        assertTrue(modeParent.components.any { it === modeCombo })
+        assertTrue(modeParent.components.filterIsInstance<JLabel>().isNotEmpty())
+        assertSame(panel.removeButton(path), modeParent.components.first { it is JButton && it.name == "repository.remove" })
+    }
+
+    @Test
     fun `reset restores stored state`() {
         check("claude").doClick()
         page.reset()
@@ -150,6 +224,142 @@ class SettingsPageTest {
     @Test
     fun `only catalog identifiers are offered`() {
         assertEquals(AssistantCatalog.assistants.map { it.wire }, panel.assistantChecks().map { it.name })
+    }
+
+    @Test
+    fun `browse chooses a directory`() {
+        assertEquals(JFileChooser.DIRECTORIES_ONLY, RepositorySettingsSection.directoryChooser().fileSelectionMode)
+        assertEquals("repository.browse", panel.browseButton().name)
+    }
+
+    @Test
+    fun `an https url is listed in download only and apply persists it`(@TempDir tempDir: Path) {
+        val cache = tempDir.resolve("cache")
+        val git = RecordingCloneGit()
+        val configurable = AssistantSettingsConfigurable(
+            assistants,
+            language,
+            repositories,
+            selection,
+            snapshot,
+            git = git,
+            cacheRoot = { cache },
+        )
+        val settings = configurable.createComponent() as SettingsPanel
+        val retained = "https://Plugins.Test/Repo.git"
+        settings.repositoryPathField().text = "  HTTPS://Plugins.Test/Repo.git  "
+        settings.addButton().doClick()
+        assertEquals("", settings.repositoryPathField().text)
+        assertEquals("", settings.repositoryError().text)
+        assertEquals(retained, rowPath(settings.repositoryRows().single()))
+        assertEquals("Download only", renderedMode(settings.modeCombo(retained)))
+        configurable.apply()
+        assertEquals(retained, repositories.value.entries().single().path)
+        assertEquals(RepositoryMode.DOWNLOAD_ONLY, repositories.value.entries().single().mode)
+        val destination = CacheDirectories.directory(cache, retained)
+        assertEquals(listOf("clone", "--", retained, destination.toString()), git.calls.single().second)
+        assertFalse(repositories.value.entries().single().path.contains(destination.fileName.toString()))
+    }
+
+    @Test
+    fun `removing a url deletes the cache clone and leaves installed files`(@TempDir tempDir: Path) {
+        val cache = tempDir.resolve("cache")
+        val git = RecordingCloneGit()
+        val configurable = AssistantSettingsConfigurable(
+            assistants,
+            language,
+            repositories,
+            selection,
+            snapshot,
+            git = git,
+            cacheRoot = { cache },
+        )
+        val settings = configurable.createComponent() as SettingsPanel
+        val retained = "https://Plugins.Test/Repo.git"
+        settings.repositoryPathField().text = retained
+        settings.addButton().doClick()
+        val destination = CacheDirectories.directory(cache, retained)
+        Files.createDirectories(destination)
+        Files.writeString(destination.resolve("README.md"), "clone")
+        val marker = tempDir.resolve("project").resolve(".cursor/skills/specification-fr/SKILL.md")
+        Files.createDirectories(marker.parent)
+        Files.writeString(marker, "installed")
+        settings.removeButton(retained).doClick()
+        configurable.apply()
+        assertTrue(repositories.value.entries().isEmpty())
+        assertFalse(Files.exists(destination))
+        assertEquals("installed", Files.readString(marker))
+    }
+
+    @Test
+    fun `discovery of a url reads the cache and selection stores the url`(@TempDir tempDir: Path) {
+        val cache = tempDir.resolve("cache")
+        val url = "https://plugins.test/repo.git"
+        val clone = CacheDirectories.directory(cache, url)
+        write(clone, "ia/skills/demo/SKILL.md", "skill")
+        val local = gitDirectory(tempDir, "local")
+        write(local, "ia/skills/local-skill/SKILL.md", "local")
+        val localPath = local.toRealPath().toString()
+        val seen = mutableListOf<Path>()
+        val model = SettingsViewModel(
+            EnabledAssistants(),
+            LanguagePreference(),
+            SourceRepositories.restore(
+                listOf(
+                    SourceRepository(url, RepositoryMode.DOWNLOAD_ONLY),
+                    SourceRepository(localPath, RepositoryMode.DOWNLOAD_ONLY),
+                ),
+            ),
+            discover = { path ->
+                seen.add(path)
+                ComponentDiscovery.discover(path)
+            },
+            cacheRoot = { cache },
+        )
+        val rows = model.componentRows
+        assertEquals(clone.normalize(), seen[0].normalize())
+        assertEquals(Path.of(localPath).normalize(), seen[1].normalize())
+        assertTrue(seen.none { it.normalize() == cache.normalize() })
+        val remoteRow = rows.single { it.repositoryPath == url }
+        assertTrue(remoteRow.label.contains("ia/skills/demo"))
+        model.setComponentSelected(url, remoteRow.id, false)
+        val xml = model.selection().toXml()
+        assertEquals(url, model.selection().entries().single().repositoryPath)
+        assertTrue(xml.contains(url))
+        assertFalse(xml.contains(clone.fileName.toString()))
+    }
+
+    @Test
+    fun `a failed fetch is reported and the current files are imported`(@TempDir tempDir: Path) {
+        val cache = tempDir.resolve("cache")
+        val project = tempDir.resolve("project")
+        val url = "https://plugins.test/repo.git"
+        val clone = CacheDirectories.directory(cache, url)
+        write(clone, "ia/skills/specification-fr/SKILL.md", "specification")
+        repositories.value = SourceRepositories.restore(listOf(SourceRepository(url, RepositoryMode.DOWNLOAD_ONLY)))
+        val git = object : GitCommand {
+            override fun run(repository: Path, args: List<String>): GitOutput =
+                if (args == listOf("fetch", "origin")) GitOutput(1, "failed") else error("unexpected git: $args")
+        }
+        val configurable = AssistantSettingsConfigurable(
+            assistants,
+            language,
+            repositories,
+            selection,
+            snapshot,
+            projectRoot = { project },
+            git = git,
+            cacheRoot = { cache },
+        )
+        val settings = configurable.createComponent() as SettingsPanel
+        settings.assistantChecks().first { it.name == "cursor" }.doClick()
+        settings.importButton().doClick()
+        assertEquals(
+            "The update failed for $url. Import continues with the current files.",
+            settings.importNotices().text,
+        )
+        assertEquals("specification", Files.readString(project.resolve(".cursor/skills/specification-fr/SKILL.md")))
+        assertTrue(Files.isDirectory(clone))
     }
 
     @Test
@@ -191,11 +401,17 @@ class SettingsPageTest {
     fun `an empty path is refused on the page`() {
         panel.repositoryPathField().text = ""
         panel.addButton().doClick()
-        assertEquals("Enter a directory that contains .git.", panel.repositoryError().text)
+        assertEquals(
+            "Enter a directory that contains .git, or a git, http, or https URL.",
+            panel.repositoryError().text,
+        )
         assertFalse(page.isModified)
         panel.repositoryPathField().text = "   "
         panel.addButton().doClick()
-        assertEquals("Enter a directory that contains .git.", panel.repositoryError().text)
+        assertEquals(
+            "Enter a directory that contains .git, or a git, http, or https URL.",
+            panel.repositoryError().text,
+        )
         assertFalse(page.isModified)
     }
 
@@ -646,6 +862,15 @@ class SettingsPageTest {
         return Triple(configurable, settings, repo)
     }
 
+    private class RecordingCloneGit : GitCommand {
+        val calls = mutableListOf<Pair<Path, List<String>>>()
+
+        override fun run(repository: Path, args: List<String>): GitOutput {
+            calls += repository to args
+            return GitOutput(0, "")
+        }
+    }
+
     private class PageGit : GitCommand {
         val calls = mutableListOf<List<String>>()
         var pushCode: Int = 0
@@ -711,6 +936,38 @@ class SettingsPageTest {
 
     private fun resolve(root: Path, relative: String): Path =
         relative.split('/').fold(root) { parent, name -> parent.resolve(name) }
+
+    private fun layoutWide(row: JPanel) {
+        val preferred = row.preferredSize
+        row.setSize(preferred.width + 240, preferred.height)
+        row.doLayout()
+    }
+
+    private fun languageProbeWidth(combo: JComboBox<UiLanguage>, language: UiLanguage): Int {
+        val probe = JComboBox(arrayOf(language))
+        probe.font = combo.font
+        probe.renderer = combo.renderer
+        probe.prototypeDisplayValue = language
+        return probe.preferredSize.width
+    }
+
+    private fun fixedTextProbeWidth(combo: JComboBox<*>, text: String): Int {
+        val probe = JComboBox(arrayOf(text))
+        probe.font = combo.font
+        probe.renderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?,
+                value: Any?,
+                index: Int,
+                isSelected: Boolean,
+                cellHasFocus: Boolean,
+            ): Component {
+                return super.getListCellRendererComponent(list, text, index, isSelected, cellHasFocus)
+            }
+        }
+        probe.prototypeDisplayValue = text
+        return probe.preferredSize.width
+    }
 
     private fun rowPath(row: Component): String =
         (row as JPanel).components.filterIsInstance<JLabel>().single().text
